@@ -272,12 +272,13 @@
   var G = (function () {
     var st = { gaji: { comp: '', d: null, dirty: {} }, pot: { comp: '', d: null, dirty: {} } };
     var BASE = { nik: 'NIK', jabatan: 'Jabatan', golongan_pajak: 'Gol. Pajak', gaji_pokok: 'Gaji Pokok' };
-    var BASIS_SHORT = { PER_HADIR: 'rate per hari hadir', PER_TELAT: 'rate per hari telat', PER_MENIT_TELAT: 'rate per menit telat', PER_JAM_LEMBUR: 'rate per jam lembur', TANPA_TELAT: 'penuh bila tanpa telat' };
+    var BASIS_SHORT = { PER_HADIR: 'rate per hari hadir', PER_TELAT: 'rate per hari telat', PER_MENIT_TELAT: 'rate per menit telat', PER_JAM_LEMBUR: 'rate per jam lembur', PER_KELUAR: 'rate per kali keluar', TANPA_TELAT: 'penuh bila tanpa telat' };
     function nDirty(k) { return Object.keys(st[k].dirty).length; }
     function key(k) { return 'grid:' + k + ':' + st[k].comp; }
     function head(k) {
       var s = st[k], isG = k === 'gaji', n = nDirty(k);
       return '<div class="toolbar" data-g="' + k + '">' + selectComp('gcomp_' + k, s.comp, true) + '<div class="search grow" style="min-width:180px"><span>' + ico('search', 'sm') + '</span><input class="inp" id="gq_' + k + '" placeholder="Cari nama / NIK / cabang…" aria-label="Cari"></div>' +
+        (isG ? '<button class="btn btn-g" data-act="g-keluar" data-k="' + k + '">' + ico('clock', 'sm') + 'Input Kali Keluar</button>' : '') +
         (S.boot.me.role === 'MANAJEMEN' ? '<button class="btn btn-g" data-act="g-komp" data-k="' + k + '">' + ico('sliders', 'sm') + 'Kelola Komponen</button>' : '') +
         '<button class="btn btn-p" id="gsave_' + k + '" data-act="g-save" data-k="' + k + '" ' + (n ? '' : 'disabled') + '>' + ico('check', 'sm') + 'Simpan' + (n ? ' (' + n + ')' : '') + '</button></div>' +
         '<p class="help" style="margin-bottom:10px">' + (isG ? 'Ubah nominal langsung di tabel, lalu tekan Simpan. Gaji pokok menjadi dasar upah lembur (÷ 173 × pengali). Anak magang: pilih Tipe <b>Harian</b> lalu isi Tarif Harian — gaji = tarif × jumlah hari hadir (lembur dihitung dari tarif × 26 hari). Komponen berlabel kecil (mis. <i>per hari hadir</i>) diisi tarif per satuan — total dihitung otomatis dari absensi saat payroll.' : 'Potongan rutin per karyawan (mis. cicilan, BPJS, simpanan). Nilai 0 = tidak ada potongan. Komponen berbasis absen (mis. denda telat per menit) diisi tarif per satuannya; totalnya dihitung otomatis dari data absensi.') + '</p>';
@@ -333,6 +334,54 @@
         X.api(k === 'gaji' ? 'gaji.list' : 'pot.list', { id_perusahaan: s.comp }, { quiet: true }).then(function (r) { if (r.success) { s.d = r.data; if (box.isConnected) paint(box, k); } });
       });
     }
+    /* Jumlah kali keluar per bulan (komponen berbasis "per kali keluar", mis. Transport) */
+    function keluarModal(k) {
+      var s = st[k], K = { p: X.periodeNow(), d: null, dirty: {} };
+      var m = X.modal({ title: 'Input Kali Keluar', wide: true, body: '<div id="klbox">' + X.skel(4, 44) + '</div>', footer: '<button class="btn btn-g" data-close>Tutup</button><button class="btn btn-p" id="klsave" disabled>Simpan</button>' });
+      function nd() { return Object.keys(K.dirty).length; }
+      function paintK() {
+        var box = m.$('#klbox'); if (!box) return; var d = K.d;
+        var bar = '<div class="toolbar"><button class="ibtn" data-kl="prev" aria-label="Bulan sebelumnya">' + ico('chevL') + '</button><b style="min-width:120px;text-align:center">' + esc(X.periodeLabel(K.p)) + '</b><button class="ibtn" data-kl="next" aria-label="Bulan berikutnya">' + ico('chevR') + '</button></div>';
+        if (!d) { box.innerHTML = bar + X.skel(4, 44); bindK(); return; }
+        if (!d.komponen.length) { box.innerHTML = bar + '<div class="card flat">' + X.empty('sliders', 'Belum ada komponen "per kali keluar"', 'Buat komponen (mis. Transport) lewat Kelola Komponen, pilih cara hitung <b>Dihitung per kali keluar</b>, lalu isi tarif per kali di Master Gaji.') + '</div>'; bindK(); return; }
+        var head = '<th>Nama</th><th>Cabang</th>' + d.komponen.map(function (c) { return '<th class="num">' + esc(c.nama) + '<div class="help" style="font-weight:500">jumlah kali keluar</div></th><th class="num">Total (Rp)</th>'; }).join('');
+        var body = d.rows.map(function (r) {
+          return '<tr><td>' + esc(r.nama) + '</td><td>' + esc(r.cabang) + '</td>' + d.komponen.map(function (c) {
+            var o = r.k[c.id], key = r.id_karyawan + '|' + c.id, v = K.dirty[key] !== undefined ? K.dirty[key] : o.jumlah, tot = Math.round((Number(v) || 0) * o.rate);
+            return '<td class="num"><input class="inp gi' + (K.dirty[key] !== undefined ? ' dirty' : '') + '" type="number" min="0" max="1000" step="1" inputmode="decimal" style="min-height:34px;padding:5px 8px;width:80px;text-align:right" data-kl-i="' + esc(r.id_karyawan) + '" data-kl-c="' + esc(c.id) + '" value="' + esc(v === 0 ? '' : v) + '" placeholder="0"></td><td class="num mono" data-kl-t="' + esc(key) + '">' + (o.rate ? X.rp(tot) : '<span class="help">tarif belum diisi</span>') + '</td>';
+          }).join('') + '</tr>';
+        }).join('');
+        box.innerHTML = bar + '<p class="help" style="margin-bottom:10px">Isi jumlah kali keluar tiap karyawan untuk bulan ini. Total = jumlah × tarif per kali (diisi di tabel Master Gaji). Kosong/0 = tidak ada.</p><div class="tbl-wrap"><table class="tbl"><thead><tr>' + head + '</tr></thead><tbody>' + (body || '<tr><td colspan="9" class="help">Tidak ada karyawan.</td></tr>') + '</tbody></table></div>';
+        bindK();
+      }
+      function bindK() {
+        var sv = m.$('#klsave'); if (sv) { sv.disabled = !nd(); sv.textContent = 'Simpan' + (nd() ? ' (' + nd() + ')' : ''); }
+        X.$$('[data-kl]', m.el).forEach(function (b) { b.onclick = function () { if (nd() && !window.confirm('Ada isian belum disimpan. Pindah bulan dan buang perubahan?')) return; K.p = X.periodeShift(K.p, b.dataset.kl === 'prev' ? -1 : 1); K.dirty = {}; load(); }; });
+        X.$$('[data-kl-i]', m.el).forEach(function (inp) {
+          inp.oninput = function () {
+            var id = inp.dataset.klI, c = inp.dataset.klC, key = id + '|' + c, r = K.d.rows.filter(function (x) { return x.id_karyawan === id; })[0], o = r.k[c];
+            var v = inp.value === '' ? 0 : Number(inp.value); if (isNaN(v) || v < 0) v = 0;
+            if (v === o.jumlah) delete K.dirty[key]; else K.dirty[key] = v;
+            inp.classList.toggle('dirty', K.dirty[key] !== undefined);
+            var t = m.$('[data-kl-t="' + key + '"]'); if (t && o.rate) t.textContent = X.rp(Math.round(v * o.rate));
+            var sv2 = m.$('#klsave'); if (sv2) { sv2.disabled = !nd(); sv2.textContent = 'Simpan' + (nd() ? ' (' + nd() + ')' : ''); }
+          };
+        });
+      }
+      function load() {
+        K.d = null; paintK();
+        X.api('keluar.list', { periode: K.p, id_perusahaan: s.comp }, { quiet: true }).then(function (r) { if (!m.el.isConnected) return; if (!r.success) { X.toast(r.message, 'err'); return; } K.d = r.data; paintK(); });
+      }
+      m.$('#klsave').onclick = function () {
+        var btn = m.$('#klsave'), items = Object.keys(K.dirty).map(function (key) { var a = key.split('|'); return { id_karyawan: a[0], id_komponen: a[1], jumlah: K.dirty[key] }; }); if (!items.length) return;
+        btn.disabled = true;
+        X.api('keluar.save', { periode: K.p, items: items }).then(function (res) {
+          btn.disabled = false; if (!res.success) return X.toast(res.message, 'err');
+          X.toast(res.message); K.dirty = {}; X.invalidate('pay'); load();
+        });
+      };
+      load();
+    }
     function kompModal(k) {
       var m = X.modal({ title: 'Kelola Komponen', body: '<div id="kmbox">' + X.skel(3, 44) + '</div>', footer: '<button class="btn btn-g" data-close>Tutup</button>' });
       var basisOpts = [{ v: 'TETAP', l: 'Tetap per bulan' }];
@@ -356,6 +405,7 @@
     function bool(v) { return v === true || v === 'true' || v === 'TRUE'; }
     X.ACT['g-save'] = function (b) { save(b.dataset.k); };
     X.ACT['g-komp'] = function (b) { kompModal(b.dataset.k); };
+    X.ACT['g-keluar'] = function (b) { keluarModal(b.dataset.k); };
     return { mount: mount };
   })();
   V.gaji = { render: function (el) { el.innerHTML = '<div class="page"><div id="gridbox"></div></div>'; G.mount($('#gridbox', el), 'gaji'); } };
