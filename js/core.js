@@ -341,8 +341,33 @@
     });
   };
   function stepper(n) {
-    return '<div class="stepper"><div class="stp ' + (n === 1 ? 'on' : 'done') + '"><b>' + (n === 1 ? '1' : ico('check', 'sm')) + '</b>Kirim OTP</div><div class="stp-line"></div><div class="stp ' + (n === 2 ? 'on' : '') + '"><b>2</b>Verifikasi</div></div>';
+    return '<div class="stepper"><div class="stp ' + (n === 1 ? 'on' : 'done') + '"><b>' + (n === 1 ? '1' : ico('check', 'sm')) + '</b>Kirim Kode</div><div class="stp-line"></div><div class="stp ' + (n === 2 ? 'on' : '') + '"><b>2</b>Buat Sandi</div></div>';
   }
+
+  /* ---------- Input Rupiah dengan titik ribuan (1.000, 10.000) — dapat dimatikan di Akun Saya ---------- */
+  var RPIN = {
+    on: function () { try { return localStorage.getItem('sapmc:fmtrp') !== '0'; } catch (e) { return true; } },
+    set: function (v) { try { localStorage.setItem('sapmc:fmtrp', v ? '1' : '0'); } catch (e) { /* abaikan */ } },
+    fmt: function (d) { return String(d).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); },
+    enhance: function (el) {
+      if (el.__rp || !RPIN.on()) return; el.__rp = true;
+      var desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value'), raw0 = el.value;
+      try { el.type = 'text'; } catch (e) { /* abaikan */ } el.setAttribute('inputmode', 'numeric');
+      Object.defineProperty(el, 'value', {
+        configurable: true,
+        get: function () { return String(desc.get.call(el)).replace(/\D/g, ''); },        // kode lain selalu membaca angka murni
+        set: function (v) { var d = String(v === null || v === undefined ? '' : v).replace(/[^\d]/g, ''); desc.set.call(el, d ? RPIN.fmt(d) : ''); }
+      });
+      el.value = raw0;
+      el.addEventListener('input', function () {
+        var cur = desc.get.call(el), pos = el.selectionStart || 0, digitsBefore = cur.slice(0, pos).replace(/\D/g, '').length, d = cur.replace(/\D/g, ''), out = d ? RPIN.fmt(d) : '';
+        if (out === cur) return; desc.set.call(el, out);
+        var n = 0, p = 0; while (p < out.length && n < digitsBefore) { if (/\d/.test(out[p])) n++; p++; } try { el.setSelectionRange(p, p); } catch (e) { /* abaikan */ }
+      }, true);
+    },
+    scan: function (root) { if (!root || !root.querySelectorAll) return; if (root.matches && root.matches('input[data-rp]')) RPIN.enhance(root); var l = root.querySelectorAll('input[data-rp]'); for (var i = 0; i < l.length; i++) RPIN.enhance(l[i]); }
+  };
+  if (window.MutationObserver) new MutationObserver(function (ms) { ms.forEach(function (m) { m.addedNodes.forEach(function (n) { if (n.nodeType === 1) RPIN.scan(n); }); }); }).observe(document.documentElement, { childList: true, subtree: true });
   var L = { email: '', cd: 0, timer: 0, auto: false };
   function showLogin(state, extra) {
     $('#app').classList.remove('on'); var el = $('#login'); el.classList.add('on');
@@ -354,17 +379,30 @@
         '<div class="idbox"><div><span class="muted">Email</span><b class="mono">' + esc(extra.email) + '</b></div><div><span class="muted">Status</span><b>' + (extra.alasan === 'NONAKTIF' ? 'Nonaktif' : 'Tidak terdaftar') + '</b></div></div>' +
         '<button class="btn btn-p btn-block" data-act="lg-retry">Coba Email Lain</button><button class="btn btn-g btn-block" style="margin-top:10px" data-act="lg-help">Hubungi HR / Manajemen</button></div>'; return;
     }
-    if (state === 'otp') {
+    if (state === 'setup') {
       el.innerHTML = '<div class="lg-card">' + brand + stepper(2) + '<p class="tc muted" style="margin-bottom:10px">Kode 6 digit dikirim ke<br><b style="color:var(--text)" class="mono">' + esc(extra.masked || L.email) + '</b></p><div class="otp" id="otp">' + [0, 1, 2, 3, 4, 5].map(function (i) { return '<input inputmode="numeric" maxlength="1" autocomplete="' + (i ? 'off' : 'one-time-code') + '" aria-label="Digit ' + (i + 1) + '">'; }).join('') + '</div>' +
-        '<div class="errmsg tc" id="lgerr" style="min-height:20px;margin:8px 0"></div><button class="btn btn-p btn-block" id="lgverify">Masuk</button>' +
-        '<div class="tc" style="margin-top:14px;display:flex;justify-content:center;gap:14px"><button class="btn btn-g btn-s" id="lgresend" disabled>Kirim ulang</button><button class="btn btn-g btn-s" data-act="lg-retry">Ganti email</button></div>' + chip + '</div>';
+        '<div class="field" style="margin-top:14px"><label for="lgpw1">Kata sandi baru</label><input class="inp" id="lgpw1" name="new-password" type="password" autocomplete="new-password" placeholder="Minimal 8 karakter, huruf + angka"></div>' +
+        '<div class="field"><label for="lgpw2">Ulangi kata sandi</label><input class="inp" id="lgpw2" type="password" autocomplete="new-password"></div>' +
+        '<button type="button" class="btn btn-g btn-s" data-act="lg-eye" style="margin-top:2px">Tampilkan kata sandi</button>' +
+        '<div class="errmsg tc" id="lgerr" style="min-height:20px;margin:8px 0"></div><button class="btn btn-p btn-block" id="lgverify">Simpan &amp; Masuk</button>' +
+        '<div class="tc" style="margin-top:14px;display:flex;justify-content:center;gap:14px"><button class="btn btn-g btn-s" id="lgresend" disabled>Kirim ulang</button><button class="btn btn-g btn-s" data-act="lg-retry">Kembali</button></div>' + chip + '</div>';
       bindOtp(); startCd(extra.cooldown || 45); return;
     }
-    el.innerHTML = '<div class="lg-card">' + brand + stepper(1) + '<div class="field"><label for="lgemail">Email Karyawan</label><input class="inp" id="lgemail" type="email" inputmode="email" autocomplete="email" placeholder="nama@perusahaan.com" value="' + esc(L.email) + '"></div>' +
-      '<div class="errmsg" id="lgerr" style="min-height:18px;margin-bottom:6px"></div><button class="btn btn-p btn-block" id="lgsend">Kirim Kode OTP</button>' +
-      '<p class="help tc" style="margin-top:12px" id="lgauto">' + '' + '</p>' + chip + '</div>';
-    var inp = $('#lgemail'); inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') sendOtp(false); }); $('#lgsend').onclick = function () { sendOtp(false); };
-    if (!state) setTimeout(function () { inp.focus(); }, 50);
+    if (state === 'reset') {
+      el.innerHTML = '<div class="lg-card">' + brand + stepper(1) + '<p class="tc muted" style="margin-bottom:12px">Pertama kali masuk atau lupa kata sandi? Kami kirim kode verifikasi ke email Anda untuk membuat kata sandi.</p>' +
+        '<div class="field"><label for="lgemail">Email Karyawan</label><input class="inp" id="lgemail" type="email" inputmode="email" autocomplete="email" placeholder="nama@perusahaan.com" value="' + esc(L.email) + '"></div>' +
+        '<div class="errmsg" id="lgerr" style="min-height:18px;margin-bottom:6px"></div><button class="btn btn-p btn-block" id="lgsend">Kirim Kode ke Email</button>' +
+        '<div class="tc" style="margin-top:12px"><button class="btn btn-g btn-s" data-act="lg-retry">Kembali ke Masuk</button></div>' + chip + '</div>';
+      var i2 = $('#lgemail'); i2.addEventListener('keydown', function (e) { if (e.key === 'Enter') sendOtp(false); }); $('#lgsend').onclick = function () { sendOtp(false); };
+      setTimeout(function () { i2.focus(); }, 50); return;
+    }
+    el.innerHTML = '<div class="lg-card">' + brand + '<div class="field"><label for="lgemail">Email Karyawan</label><input class="inp" id="lgemail" name="email" type="email" inputmode="email" autocomplete="username" placeholder="nama@perusahaan.com" value="' + esc(L.email) + '"></div>' +
+      '<div class="field"><label for="lgpw">Kata Sandi</label><input class="inp" id="lgpw" name="password" type="password" autocomplete="current-password" placeholder="Kata sandi Anda"></div>' +
+      '<button type="button" class="btn btn-g btn-s" data-act="lg-eye" style="margin-top:2px">Tampilkan kata sandi</button>' +
+      '<div class="errmsg" id="lgerr" style="min-height:18px;margin:6px 0"></div><button class="btn btn-p btn-block" id="lgsend">Masuk</button>' +
+      '<div class="tc" style="margin-top:12px"><button class="btn btn-g btn-s" data-act="lg-forgot">Pertama kali masuk / Lupa kata sandi?</button></div>' + chip + '</div>';
+    var inp = $('#lgemail'), pw = $('#lgpw'); inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') pw.focus(); }); pw.addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); }); $('#lgsend').onclick = doLogin;
+    if (!state) setTimeout(function () { (inp.value ? pw : inp).focus(); }, 50);
   }
   function startCd(n) {
     clearInterval(L.timer); L.cd = n; var b = $('#lgresend'); if (!b) return;
@@ -374,33 +412,52 @@
   function bindOtp() {
     var ins = $$('#otp input'), get = function () { return ins.map(function (i) { return i.value; }).join(''); };
     ins.forEach(function (inp, i) {
-      inp.addEventListener('input', function () { inp.value = inp.value.replace(/\D/g, '').slice(-1); if (inp.value && ins[i + 1]) ins[i + 1].focus(); if (get().length === 6) verify(); });
+      inp.addEventListener('input', function () { inp.value = inp.value.replace(/\D/g, '').slice(-1); if (inp.value && ins[i + 1]) ins[i + 1].focus(); if (get().length === 6) $('#lgpw1').focus(); });
       inp.addEventListener('keydown', function (e) { if (e.key === 'Backspace' && !inp.value && ins[i - 1]) { ins[i - 1].focus(); ins[i - 1].value = ''; } if (e.key === 'Enter') verify(); });
-      inp.addEventListener('paste', function (e) { var t = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 6); if (t) { e.preventDefault(); ins.forEach(function (x, j) { x.value = t[j] || ''; }); (ins[Math.min(t.length, 5)]).focus(); if (t.length === 6) verify(); } });
+      inp.addEventListener('paste', function (e) { var t = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 6); if (t) { e.preventDefault(); ins.forEach(function (x, j) { x.value = t[j] || ''; }); (ins[Math.min(t.length, 5)]).focus(); if (t.length === 6) $('#lgpw1').focus(); } });
     });
+    ['#lgpw1', '#lgpw2'].forEach(function (q) { $(q).addEventListener('keydown', function (e) { if (e.key === 'Enter') verify(); }); });
     $('#lgverify').onclick = verify; setTimeout(function () { ins[0].focus(); }, 50);
   }
-  function sendOtp(resend) {
-    var email = resend ? L.email : ($('#lgemail').value || '').trim().toLowerCase(), err = $('#lgerr'), b = $('#lgsend') || $('#lgresend');
+  function sendOtp(resend, emailArg) {
+    var email = emailArg || (resend ? L.email : ($('#lgemail').value || '').trim().toLowerCase()), err = $('#lgerr'), b = $('#lgsend') || $('#lgresend');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err.textContent = 'Masukkan email yang valid.'; $('#lgemail') && $('#lgemail').classList.add('err'); return; }
     L.email = email; if (b) { b.disabled = true; b.innerHTML = '<span class="spin"></span> Mengirim…'; }
     api('auth.sendOtp', { email: email }).then(function (r) {
       if (r.success && r.data && r.data.denied) return showLogin('denied', r.data);
-      if (!r.success) { if (b) { b.disabled = false; b.textContent = resend ? 'Kirim ulang' : 'Kirim Kode OTP'; } if ($('#lgerr')) $('#lgerr').textContent = r.message; return; }
-      if (resend) { toast('Kode baru dikirim.', 'info'); startCd(r.data.cooldown); } else showLogin('otp', r.data);
+      if (!r.success) { if (b) { b.disabled = false; b.textContent = resend ? 'Kirim ulang' : 'Kirim Kode ke Email'; } if ($('#lgerr')) $('#lgerr').textContent = r.message; return; }
+      if (resend) { toast('Kode baru dikirim.', 'info'); startCd(r.data.cooldown); } else showLogin('setup', r.data);
     });
   }
   function verify() {
-    var code = $$('#otp input').map(function (i) { return i.value; }).join(''), b = $('#lgverify'), err = $('#lgerr');
+    var code = $$('#otp input').map(function (i) { return i.value; }).join(''), b = $('#lgverify'), err = $('#lgerr'), p1 = $('#lgpw1').value, p2 = $('#lgpw2').value;
     if (code.length !== 6) { err.textContent = 'Masukkan 6 digit kode.'; return; }
-    if (b.disabled) return; b.disabled = true; b.innerHTML = '<span class="spin"></span> Memverifikasi…'; err.textContent = '';
-    api('auth.verifyOtp', { email: L.email, kode: code }).then(function (r) {
+    if (p1.length < 8 || !/[A-Za-z]/.test(p1) || !/\d/.test(p1)) { err.textContent = 'Kata sandi minimal 8 karakter dan memuat huruf + angka.'; return; }
+    if (p1 !== p2) { err.textContent = 'Ulangi kata sandi tidak sama.'; return; }
+    if (b.disabled) return; b.disabled = true; b.innerHTML = '<span class="spin"></span> Menyimpan…'; err.textContent = '';
+    api('auth.setPassword', { email: L.email, kode: code, password: p1 }).then(function (r) {
       if (r.success && r.data && r.data.denied) return showLogin('denied', r.data);
-      if (!r.success) { b.disabled = false; b.textContent = 'Masuk'; err.textContent = r.message; $$('#otp input').forEach(function (i) { i.value = ''; }); $$('#otp input')[0].focus(); return; }
+      if (!r.success) { b.disabled = false; b.textContent = 'Simpan & Masuk'; err.textContent = r.message; if (r.code !== 'WEAK') { $$('#otp input').forEach(function (i) { i.value = ''; }); $$('#otp input')[0].focus(); } return; }
+      toast('Kata sandi tersimpan. Selanjutnya masuk dengan email + kata sandi.', 'ok'); enter(r.data);
+    });
+  }
+  function doLogin() {
+    var email = ($('#lgemail').value || '').trim().toLowerCase(), pw = $('#lgpw').value, err = $('#lgerr'), b = $('#lgsend');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err.textContent = 'Masukkan email yang valid.'; return; }
+    if (!pw) { err.textContent = 'Masukkan kata sandi.'; $('#lgpw').focus(); return; }
+    L.email = email; err.textContent = ''; b.disabled = true; b.innerHTML = '<span class="spin"></span> Masuk…';
+    api('auth.login', { email: email, password: pw }).then(function (r) {
+      if (r.success && r.data && r.data.denied) return showLogin('denied', r.data);
+      if (!r.success) {
+        if (r.code === 'NEED_SETUP') { toast('Anda belum punya kata sandi. Kode verifikasi dikirim ke email.', 'info'); b.textContent = 'Mengirim kode…'; return sendOtp(false, email); }
+        b.disabled = false; b.textContent = 'Masuk'; err.textContent = r.message; $('#lgpw').value = ''; $('#lgpw').focus(); return;
+      }
       enter(r.data);
     });
   }
-  ACT['lg-retry'] = function () { L.email = ''; showLogin(); };
+  ACT['lg-forgot'] = function () { var v = ($('#lgemail') || {}).value; if (v) L.email = v.trim().toLowerCase(); showLogin('reset'); };
+  ACT['lg-eye'] = function (btn) { var show = btn.dataset.on !== '1'; btn.dataset.on = show ? '1' : '0'; btn.textContent = show ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'; ['#lgpw', '#lgpw1', '#lgpw2'].forEach(function (q) { var i = $(q); if (i) i.type = show ? 'text' : 'password'; }); };
+  ACT['lg-retry'] = function () { showLogin(); };
   ACT['lg-help'] = function () { modal({ title: 'Hubungi HR / Manajemen', body: '<p style="color:var(--muted)">Minta HR atau Manajemen mendaftarkan / mengaktifkan email Anda pada menu <b>Master Data → Karyawan</b>, lalu coba masuk kembali.</p>', footer: '<button class="btn btn-p" data-close>Mengerti</button>' }); };
 
   function start() {
@@ -424,6 +481,7 @@
   window.addEventListener('online', function () { toast('Koneksi pulih.', 'info'); if (S.token) refreshBoot(); });
 
   window.SAP = { S: S, $: $, $$: $$, esc: esc, ico: ico, rp: rp, nf: nf, dateLabel: dateLabel, hm: hm, hmMin: hmMin, periodeLabel: periodeLabel, periodeShift: periodeShift, periodeNow: periodeNow, nowIn: nowIn, initials: initials,
+    RPIN: RPIN, setToken: function (t) { S.token = t; LS.setRaw('token', t); },
     api: api, swr: swr, invalidate: invalidate, toast: toast, modal: modal, closeAll: closeAll, confirm: confirmBox, field: field, readForm: readForm, skel: skel, empty: empty, saveB64: saveB64, saveText: saveText,
     mountTable: mountTable, debounce: debounce, go: go, views: views, ACT: ACT, LS: LS, refreshBoot: refreshBoot, showLogin: showLogin, renderChrome: renderChrome, applyTheme: applyTheme, isDark: isDark, start: start, busy: busy };
 })();

@@ -234,15 +234,33 @@
         '<div class="card"><div class="sline"><span class="muted">ID Karyawan</span><b class="mono">' + esc(me.id) + '</b></div><div class="sline"><span class="muted">Cabang</span><b>' + esc(sc.cabang) + '</b></div><div class="sline"><span class="muted">Zona Waktu</span><b>' + esc(sc.zona) + '</b></div>' +
         (sc.pakaiShift ? '<div class="sline" style="align-items:center"><span class="muted">Shift Saya</span><select class="sel" id="pshift" style="max-width:220px">' + sc.shifts.map(function (x) { return '<option value="' + esc(x.id_shift) + '"' + (x.id_shift === sc.defaultShift ? ' selected' : '') + '>' + esc(x.nama) + ' · ' + esc(x.jam_masuk) + '–' + esc(x.jam_pulang) + '</option>'; }).join('') + '</select></div>' : '') +
         '<div class="sline"><span class="muted">WhatsApp</span><span style="display:flex;gap:8px;align-items:center"><b class="mono" id="pwa">' + esc(me.no_wa || '-') + '</b><button class="btn btn-g btn-s" data-act="pf-wa">' + ico('edit', 'sm') + 'Ubah</button></span></div></div>' +
-        '<div class="card"><div class="sline" style="align-items:center"><span>Mode Gelap</span><label class="sw"><input type="checkbox" id="dm" ' + (X.isDark() ? 'checked' : '') + ' aria-label="Mode gelap"></label></div></div>' +
-        '<button class="btn btn-g btn-block" data-act="pf-all">' + ico('lock', 'sm') + 'Keluar dari semua perangkat</button><button class="btn btn-d btn-block" data-act="logout">' + ico('logout', 'sm') + 'Keluar</button><p class="help tc">' + esc(S.boot.app.nama) + ' v' + esc(S.boot.app.versi) + '</p></div>';
+        '<div class="card"><div class="sline" style="align-items:center"><span>Mode Gelap</span><label class="sw"><input type="checkbox" id="dm" ' + (X.isDark() ? 'checked' : '') + ' aria-label="Mode gelap"></label></div>' + (S.boot.me.role === 'FINANCE' || S.boot.me.role === 'MANAJEMEN' ? '<div class="sline" style="align-items:center"><span>Titik ribuan pada nominal<br><span class="help">Tampilan 1.000 / 10.000 saat mengetik angka Rupiah</span></span><label class="sw"><input type="checkbox" id="fr" ' + (X.RPIN.on() ? 'checked' : '') + ' aria-label="Titik ribuan"></label></div>' : '') + '</div>' +
+        '<button class="btn btn-g btn-block" data-act="pf-pw">' + ico('lock', 'sm') + 'Ubah kata sandi</button><button class="btn btn-g btn-block" data-act="pf-all">' + ico('lock', 'sm') + 'Keluar dari semua perangkat</button><button class="btn btn-d btn-block" data-act="logout">' + ico('logout', 'sm') + 'Keluar</button><p class="help tc">' + esc(S.boot.app.nama) + ' v' + esc(S.boot.app.versi) + '</p></div>';
       var ps = $('#pshift', el); if (ps) ps.onchange = function () { A.shiftId = ps.value; saveShift(ps.value); X.toast('Shift diganti.'); };
+      var fr = $('#fr', el); if (fr) fr.onchange = function () { X.RPIN.set(this.checked); X.toast(this.checked ? 'Titik ribuan aktif.' : 'Titik ribuan dimatikan.'); };
       $('#dm', el).onchange = function () { X.applyTheme(this.checked ? 'dark' : 'light'); X.renderChrome(); };
     }
   };
   X.ACT['pf-wa'] = function () {
     X.modal({ title: 'Ubah Nomor WhatsApp', body: X.field({ name: 'no_wa', label: 'Nomor WhatsApp', value: S.boot.me.no_wa, placeholder: '6281234567890', help: 'Gunakan format 628xxxxxxxxxx. Dipakai untuk pengingat absensi.' }), footer: '<button class="btn btn-g" data-close>Batal</button><button class="btn btn-p" id="sv">Simpan</button>',
       onOpen: function (m) { m.$('#sv').onclick = function () { var v = X.readForm(m.el).no_wa, b = m.$('#sv'); b.disabled = true; X.api('profil.updateWa', { no_wa: v }).then(function (r) { b.disabled = false; if (!r.success) return X.toast(r.message, 'err'); S.boot.me.no_wa = r.data.no_wa; X.LS.set('boot', S.boot); var p = $('#pwa'); if (p) p.textContent = r.data.no_wa; m.close(); X.toast(r.message); }); }; } });
+  };
+  X.ACT['pf-pw'] = function () {
+    X.modal({ title: 'Ubah Kata Sandi', body: '<div class="field"><label for="pw0">Kata sandi saat ini</label><input class="inp" id="pw0" type="password" autocomplete="current-password"></div><div class="field"><label for="pw1">Kata sandi baru</label><input class="inp" id="pw1" type="password" autocomplete="new-password" placeholder="Minimal 8 karakter, huruf + angka"></div><div class="field"><label for="pw2">Ulangi kata sandi baru</label><input class="inp" id="pw2" type="password" autocomplete="new-password"></div><p class="help">Setelah diubah, perangkat lain harus masuk ulang. Lupa kata sandi saat ini? Keluar, lalu pilih &quot;Lupa kata sandi&quot; di halaman masuk.</p><div class="errmsg" id="pwerr" style="min-height:18px"></div>',
+      footer: '<button class="btn btn-g" data-close>Batal</button><button class="btn btn-p" id="pwsv">Simpan</button>',
+      onOpen: function (m) {
+        m.$('#pwsv').onclick = function () {
+          var a = m.$('#pw0').value, b = m.$('#pw1').value, c = m.$('#pw2').value, er = m.$('#pwerr'), btn = m.$('#pwsv');
+          if (!a) { er.textContent = 'Isi kata sandi saat ini.'; return; }
+          if (b.length < 8 || !/[A-Za-z]/.test(b) || !/\d/.test(b)) { er.textContent = 'Kata sandi baru minimal 8 karakter dan memuat huruf + angka.'; return; }
+          if (b !== c) { er.textContent = 'Ulangi kata sandi tidak sama.'; return; }
+          btn.disabled = true; er.textContent = '';
+          X.api('auth.changePassword', { lama: a, baru: b }).then(function (r) {
+            btn.disabled = false; if (!r.success) { er.textContent = r.message; return; }
+            X.setToken(r.data.token); X.closeAll(); X.toast(r.message || 'Kata sandi diubah.');
+          });
+        };
+      } });
   };
   X.ACT['pf-all'] = function () { X.confirm({ title: 'Keluar dari semua perangkat?', text: 'Semua sesi aktif Anda akan diakhiri.', ok: 'Keluar semua' }).then(function (ok) { if (!ok) return; X.api('auth.logout', { semua: true }, { quiet: true }).then(function () { X.LS.clearUser(); S.token = ''; S.boot = null; $('#app').classList.remove('on'); X.showLogin(); }); }); };
 })();
