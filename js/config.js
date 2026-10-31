@@ -3,6 +3,6 @@
    Dapatkan dari: Apps Script → Deploy → Manage deployments
    ============================================================ */
 window.SAPMC_CONFIG = {
-  GAS_URL: 'https://script.google.com/macros/s/AKfycbzwUjIM9lsLCFY39JxseJzqBP-c-BrkHMim80j35pkOSl7fBqbUj6rLQyhouC4yopl3yQ/exec',
+  GAS_URL: 'https://script.google.com/macros/s/AKfycby4OW7QjWpnJlnYM_yCUz8xeNlVgUV0XmXxoseBJuw7Ec11UoTUVXjZ_nauOVC78S0_JA/exec',
   TIMEOUT_MS: 60000
 };

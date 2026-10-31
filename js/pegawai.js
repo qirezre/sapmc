@@ -11,11 +11,12 @@
   });
 
   /* ---------------------------------------------------------------- ABSEN */
-  var A = { shiftId: '', busy: false, mount: null };
+  var A = { shiftId: '', shiftDate: '', busy: false, mount: null };
   function sched() { return S.boot.schedule; }
   function curShift() {
-    var sc = sched(), list = sc.pakaiShift ? sc.shifts : [sc.reguler];
-    return list.filter(function (s) { return s.id_shift === (A.shiftId || sc.defaultShift); })[0] || list[0];
+    var sc = sched(), list = sc.pakaiShift ? sc.shifts : [sc.reguler], rec = activeRec();
+    var id = rec && rec.id_shift ? rec.id_shift : (sc.pakaiShift ? A.shiftId : 'REGULER');   // perusahaan bershift: wajib pilih tiap hari
+    return list.filter(function (s) { return s.id_shift === id; })[0] || (sc.pakaiShift ? null : list[0]);
   }
   function activeRec() {
     var r = S.boot.today; if (!r) return null; var n = X.nowIn(S.tz);
@@ -36,6 +37,7 @@
       if (rec.menit_terlambat > 0) return '<div class="banner warn">' + ic('', 'alert') + '<div><b>Terlambat ' + rec.menit_terlambat + ' menit</b>Keterlambatan dicatat pada rekap kehadiran Anda.</div></div>';
       return '<div class="banner ok">' + ic('', 'check') + '<div><b>Tepat waktu</b>Absen masuk Anda tercatat tanpa keterlambatan.</div></div>';
     }
+    if (!sh) return '<div class="banner info">' + ic('', 'info') + '<div><b>Pilih shift dulu</b>Pilih shift kerja Anda hari ini sebelum absen masuk.</div></div>';
     var li = lateInfo(sh, n), dur = X.hmMin(sh.jam_pulang) - X.hmMin(sh.jam_masuk); if (dur <= 0) dur += 1440;
     if (li.raw > dur) return '<div class="banner info">' + ic('', 'info') + '<div><b>Di luar jam kerja</b>Jadwal ' + esc(sh.jam_masuk) + '–' + esc(sh.jam_pulang) + '. Pilih shift yang sesuai bila Anda bekerja sekarang.</div></div>';
     if (li.raw <= 0) return '<div class="banner info">' + ic('', 'info') + '<div><b>Belum jam masuk</b>Jam masuk ' + esc(sh.jam_masuk) + '. Absen sebelum waktu tersebut agar tepat waktu.</div></div>';
@@ -44,8 +46,8 @@
   }
   function absenHtml() {
     var me = S.boot.me, sc = sched(), sh = curShift(), n = X.nowIn(S.tz), rec = activeRec();
-    var shiftUi = sc.pakaiShift ? '<div class="field" style="margin:0 0 12px"><label for="shsel">Pilih Shift</label><select class="sel" id="shsel" ' + (rec ? 'disabled' : '') + '>' + sc.shifts.map(function (s) { return '<option value="' + esc(s.id_shift) + '"' + (s.id_shift === sh.id_shift ? ' selected' : '') + '>' + esc(s.nama) + ' · ' + esc(s.jam_masuk) + '–' + esc(s.jam_pulang) + '</option>'; }).join('') + '</select></div>' : '';
-    var rule = '<div class="sline"><span class="muted">Jam kerja</span><b class="mono">' + esc(sh.jam_masuk) + ' – ' + esc(sh.jam_pulang) + (sh.lintas ? ' (+1)' : '') + '</b></div><div class="sline"><span class="muted">Toleransi</span><b class="mono">' + sc.toleransi + ' menit</b></div>';
+    var shiftUi = sc.pakaiShift ? '<div class="field" style="margin:0 0 12px"><label for="shsel">Pilih Shift Hari Ini</label><select class="sel" id="shsel" ' + (rec ? 'disabled' : '') + '>' + (sh ? '' : '<option value="" selected>— Pilih shift dulu —</option>') + sc.shifts.map(function (s) { return '<option value="' + esc(s.id_shift) + '"' + (sh && s.id_shift === sh.id_shift ? ' selected' : '') + '>' + esc(s.nama) + ' · ' + esc(s.jam_masuk) + '–' + esc(s.jam_pulang) + '</option>'; }).join('') + '</select></div>' : '';
+    var rule = '<div class="sline"><span class="muted">Jam kerja</span><b class="mono">' + (sh ? esc(sh.jam_masuk) + ' – ' + esc(sh.jam_pulang) + (sh.lintas ? ' (+1)' : '') : '-') + '</b></div><div class="sline"><span class="muted">Toleransi</span><b class="mono">' + sc.toleransi + ' menit</b></div>';
     var pend = rec && rec.pending ? ' <span class="pending-dot" title="Menyimpan…"></span>' : '';
     var btn;
     if (!rec) btn = '<button class="btn btn-p btn-xl btn-block hero-btn" data-act="punch" data-kind="IN">' + ico('camera') + 'ABSEN MASUK (SELFIE)</button>';
@@ -62,21 +64,16 @@
   }
   V.absen = {
     render: function (el) {
-      A.mount = el; A.shiftId = A.shiftId || sched().defaultShift; el.innerHTML = absenHtml(); bindAbsen(el);
+      A.mount = el; var td = X.nowIn(S.tz).date; if (A.shiftDate !== td) { A.shiftDate = td; A.shiftId = ''; } el.innerHTML = absenHtml(); bindAbsen(el);
       X.api('absen.state', {}, { quiet: true, dedupe: true }).then(function (r) {                  // sinkron di latar
         if (!r.success || A.busy || S.route !== 'absen') return;
         if (JSON.stringify(r.data.today) !== JSON.stringify(S.boot.today)) { S.boot.today = r.data.today; X.LS.set('boot', S.boot); el.innerHTML = absenHtml(); bindAbsen(el); }
       });
     },
     onBoot: function () { if (!A.busy && S.route === 'absen') { A.mount.innerHTML = absenHtml(); bindAbsen(A.mount); } },
-    tick: function (n) { var b = $('#bnr'); if (b && !activeRec()) b.innerHTML = banner(null, curShift(), n); }
+    tick: function (n) { var b = $('#bnr'); if (b && !activeRec() && curShift()) b.innerHTML = banner(null, curShift(), n); }
   };
-  function bindAbsen(el) { var s = $('#shsel', el); if (s) s.onchange = function () { A.shiftId = s.value; saveShift(s.value); el.innerHTML = absenHtml(); bindAbsen(el); }; }
-  /* shift pilihan karyawan disimpan sebagai default (optimistic, sinkron di latar) */
-  function saveShift(id) {
-    var old = sched().defaultShift; sched().defaultShift = id; X.LS.set('boot', S.boot);
-    X.api('profil.setShift', { id_shift: id }, { quiet: true }).then(function (r) { if (!r.success) { sched().defaultShift = old; A.shiftId = old; X.LS.set('boot', S.boot); X.toast(r.message, 'err'); if (S.route === 'absen' && A.mount) { A.mount.innerHTML = absenHtml(); bindAbsen(A.mount); } } });
-  }
+  function bindAbsen(el) { var s = $('#shsel', el); if (s) s.onchange = function () { A.shiftId = s.value; el.innerHTML = absenHtml(); bindAbsen(el); }; }
 
   var ALASAN = '';
   var LST = { PENDING: ['Menunggu persetujuan', 'b-warn'], DISETUJUI: ['Disetujui', 'b-ok'], DITOLAK: ['Ditolak', 'b-bad'] };
@@ -232,11 +229,9 @@
       var me = S.boot.me, sc = S.boot.schedule;
       el.innerHTML = '<div class="page narrow" style="display:flex;flex-direction:column;gap:14px"><div class="card tc"><span class="av lg" style="margin:0 auto 10px">' + esc(X.initials(me.nama)) + '</span><h2 style="font-size:18px">' + esc(me.nama) + '</h2><div class="muted">' + esc(me.email) + '</div><div style="margin-top:8px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap"><span class="badge b-info">' + esc(me.roleLabel) + '</span><span class="badge b-co">' + esc(sc.perusahaan) + '</span></div></div>' +
         '<div class="card"><div class="sline"><span class="muted">ID Karyawan</span><b class="mono">' + esc(me.id) + '</b></div><div class="sline"><span class="muted">Cabang</span><b>' + esc(sc.cabang) + '</b></div><div class="sline"><span class="muted">Zona Waktu</span><b>' + esc(sc.zona) + '</b></div>' +
-        (sc.pakaiShift ? '<div class="sline" style="align-items:center"><span class="muted">Shift Saya</span><select class="sel" id="pshift" style="max-width:220px">' + sc.shifts.map(function (x) { return '<option value="' + esc(x.id_shift) + '"' + (x.id_shift === sc.defaultShift ? ' selected' : '') + '>' + esc(x.nama) + ' · ' + esc(x.jam_masuk) + '–' + esc(x.jam_pulang) + '</option>'; }).join('') + '</select></div>' : '') +
         '<div class="sline"><span class="muted">WhatsApp</span><span style="display:flex;gap:8px;align-items:center"><b class="mono" id="pwa">' + esc(me.no_wa || '-') + '</b><button class="btn btn-g btn-s" data-act="pf-wa">' + ico('edit', 'sm') + 'Ubah</button></span></div></div>' +
         '<div class="card"><div class="sline" style="align-items:center"><span>Mode Gelap</span><label class="sw"><input type="checkbox" id="dm" ' + (X.isDark() ? 'checked' : '') + ' aria-label="Mode gelap"></label></div>' + (S.boot.me.role === 'FINANCE' || S.boot.me.role === 'MANAJEMEN' ? '<div class="sline" style="align-items:center"><span>Titik ribuan pada nominal<br><span class="help">Tampilan 1.000 / 10.000 saat mengetik angka Rupiah</span></span><label class="sw"><input type="checkbox" id="fr" ' + (X.RPIN.on() ? 'checked' : '') + ' aria-label="Titik ribuan"></label></div>' : '') + '</div>' +
         '<button class="btn btn-g btn-block" data-act="pf-pw">' + ico('lock', 'sm') + 'Ubah kata sandi</button><button class="btn btn-g btn-block" data-act="pf-all">' + ico('lock', 'sm') + 'Keluar dari semua perangkat</button><button class="btn btn-d btn-block" data-act="logout">' + ico('logout', 'sm') + 'Keluar</button><p class="help tc">' + esc(S.boot.app.nama) + ' v' + esc(S.boot.app.versi) + '</p></div>';
-      var ps = $('#pshift', el); if (ps) ps.onchange = function () { A.shiftId = ps.value; saveShift(ps.value); X.toast('Shift diganti.'); };
       var fr = $('#fr', el); if (fr) fr.onchange = function () { X.RPIN.set(this.checked); X.toast(this.checked ? 'Titik ribuan aktif.' : 'Titik ribuan dimatikan.'); };
       $('#dm', el).onchange = function () { X.applyTheme(this.checked ? 'dark' : 'light'); X.renderChrome(); };
     }

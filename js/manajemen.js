@@ -573,7 +573,7 @@
   };
 
   /* ---------------------------------------------------------------- INPUT ABSEN BULANAN (manual) */
-  var AM = { mode: 'total', t: { hari: '', lembur: '', telHari: '', telMenit: '', auto: true, istirahat: 60 }, p: '', comp: '', cab: '', emp: '', f: null, rows: [], shift: '', setujui: true, alasan: 'Input manual absensi bulan ini', el: null };
+  var AM = { mode: 'total', p: '', comp: '', cab: '', emp: '', f: null, rows: [], shift: '', setujui: true, alasan: 'Input manual absensi bulan ini', el: null };
   var DN = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
   function amEmps() { return pick().karyawan.filter(function (k) { return k.aktif && k.role !== 'MANAJEMEN' && (!AM.comp || k.id_perusahaan === AM.comp) && (!AM.cab || k.id_cabang === AM.cab); }).sort(function (a, b) { return a.nama < b.nama ? -1 : 1; }); }
   function amJadwal() { var f = AM.f; if (!f) return { masuk: '08:00', pulang: '17:00' }; var s = f.shifts.filter(function (x) { return x.id_shift === AM.shift; })[0]; return s ? { masuk: s.jam_masuk, pulang: s.jam_pulang } : f.jadwal; }
@@ -582,16 +582,16 @@
   function amDirty(r) { var o = r.o; return r.hadir !== o.hadir || (r.hadir && (r.masuk !== o.masuk || r.pulang !== o.pulang || r.alasan_lembur !== o.alasan_lembur)); }
   function amCount() { return AM.rows.filter(amDirty).length; }
   function amShell() {
+    if (AM.mode === 'total') return atShell();
     var emps = amEmps(), n = amCount();
     var bar = '<div class="toolbar" style="gap:8px"><div style="display:flex;align-items:center;gap:6px"><button class="btn btn-g btn-s" data-act="am-prev" aria-label="Bulan sebelumnya">' + ico('chevL', 'sm') + '</button><b style="min-width:132px;text-align:center">' + X.periodeLabel(AM.p) + '</b><button class="btn btn-g btn-s" data-act="am-next" aria-label="Bulan berikutnya" ' + (AM.p >= X.periodeNow() ? 'disabled' : '') + '>' + ico('chevR', 'sm') + '</button></div>' +
       selHtml('amcomp', [{ v: '', l: 'Semua perusahaan' }].concat(compOptions()), AM.comp, 190) + '<span id="amcabw">' + cabSel('amcab', AM.comp, AM.cab) + '</span>' +
       selHtml('amemp', [{ v: '', l: '— pilih karyawan —' }].concat(emps.map(function (k) { return { v: k.id, l: k.nama }; })), AM.emp, 220) + '</div>';
-    return '<div class="page"><div id="ambar">' + bar + '</div><div class="toolbar"><div class="seg" role="tablist"><button role="tab" class="' + (AM.mode === 'total' ? 'on' : '') + '" data-act="am-mode" data-m="total">Total Sebulan</button><button role="tab" class="' + (AM.mode !== 'total' ? 'on' : '') + '" data-act="am-mode" data-m="hari">Per Hari</button></div></div><p class="help" style="margin-bottom:10px">' + (AM.mode === 'total' ? 'Untuk bulan yang absensinya belum masuk ke aplikasi: pilih karyawan, isi <b>jumlah hari masuk</b> sebulan. Libur tiap Minggu: hari masuk di atas hari kerja normal otomatis jadi lembur penuh. Lembur lain diisi di <b>lembur tambahan</b>.' : 'Pilih karyawan, centang hari hadir, atur jam &amp; lembur per hari, lalu <b>Simpan</b>.') + ' Perubahan dicatat atas nama Anda.</p><div id="ambody">' + amBody() + '</div></div>';
+    return '<div class="page"><div id="ambar">' + bar + '</div><div class="toolbar"><div class="seg" role="tablist"><button role="tab" class="' + (AM.mode === 'total' ? 'on' : '') + '" data-act="am-mode" data-m="total">Total Sebulan</button><button role="tab" class="' + (AM.mode !== 'total' ? 'on' : '') + '" data-act="am-mode" data-m="hari">Per Hari</button></div></div><p class="help" style="margin-bottom:10px">' + 'Pilih karyawan, centang hari hadir, atur jam &amp; lembur per hari, lalu <b>Simpan</b>.' + ' Perubahan dicatat atas nama Anda.</p><div id="ambody">' + amBody() + '</div></div>';
   }
   function amBody() {
     if (!AM.emp) return '<div class="card flat">' + X.empty('users', 'Pilih karyawan', 'Pilih perusahaan/cabang lalu karyawan untuk mengisi absensi bulan ini.') + '</div>';
     if (!AM.f) return X.skel(6, 44);
-    if (AM.mode === 'total') return amTotalBody();
     var f = AM.f, j = amJadwal(), n = amCount(), hadir = AM.rows.filter(function (r) { return r.hadir; }).length, lemb = AM.rows.reduce(function (a, r) { return a + (r.hadir ? r.lembur : 0); }, 0);
     var top = '<div class="card" style="margin-bottom:12px"><div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center"><b>' + esc(f.nama) + '</b><span class="badge b-info">' + hadir + ' hari hadir</span><span class="badge b-n">Lembur ' + Math.floor(lemb / 60) + ' j ' + (lemb % 60) + ' m</span><span class="muted" style="font-size:12px">Jadwal ' + esc(j.masuk) + '–' + esc(j.pulang) + '</span><span class="grow"></span>' +
       '<button class="btn btn-g btn-s" data-act="am-preset" data-k="5">Centang Sen–Jum</button><button class="btn btn-g btn-s" data-act="am-preset" data-k="6">Centang Sen–Sab</button><button class="btn btn-g btn-s" data-act="am-preset" data-k="0">Kosongkan</button></div>' +
@@ -608,37 +608,109 @@
     return top + '<div class="toolbar"><span class="grow"></span><button class="btn btn-p" id="amsave" data-act="am-save" ' + (n ? '' : 'disabled') + '>' + ico('check', 'sm') + 'Simpan' + (n ? ' (' + n + ' hari)' : '') + '</button></div>' +
       '<div class="card flat" style="padding:0;overflow:hidden"><div style="overflow:auto;max-height:66vh"><table class="t"><thead><tr><th>Tanggal</th><th>Hadir</th><th>Masuk</th><th>Pulang</th><th class="num">Lembur (menit)</th><th>Alasan lembur</th><th></th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
   }
-  /** Hitung aturan libur Minggu: hari kerja normal = jumlah hari bulan - jumlah Minggu; kelebihan hari = lembur 1 hari penuh (jam kerja - istirahat). */
-  function amRule() {
-    var p = AM.p, y = parseInt(p.slice(0, 4), 10), m = parseInt(p.slice(5, 7), 10), dim = new Date(y, m, 0).getDate(), mg = 0;
-    for (var d = 1; d <= dim; d++) if (new Date(y, m - 1, d).getDay() === 0) mg++;
-    var j = amJadwal(), a = hmToM(j.masuk), b = hmToM(j.pulang), dur = b > a ? b - a : 1440 - a + b, ist = Math.max(0, Math.floor(Number(AM.t.istirahat === '' ? 60 : AM.t.istirahat) || 0)), kerja = Math.max(0, dur - ist);
-    var hari = Math.max(0, Math.floor(Number(AM.t.hari) || 0)), tam = Math.max(0, Math.round((Number(String(AM.t.lembur || 0).replace(',', '.')) || 0) * 60));
-    var harian = !!(AM.f && AM.f.harian), on = AM.t.auto && !harian, lebih = on ? Math.max(0, hari - (dim - mg)) : 0;
-    return { dim: dim, minggu: mg, normal: dim - mg, kerja: kerja, lebih: lebih, oto: lebih * kerja, tam: tam, total: lebih * kerja + tam, harian: harian, on: on, hari: hari };
+  /* ---- Mode TOTAL SEBULAN: tabel semua karyawan (seperti Master Data) ---- */
+  var AT = { data: null, rows: [], q: '', opt: { auto: true, ist: 60, jk: '', setujui: true, alasan: 'Input total sebulan' }, init: { auto: true, ist: 60, jk: '' }, busy: false };
+  function hj(m) { return Math.floor(m / 60) + ' j' + (m % 60 ? ' ' + (m % 60) + ' m' : ''); }
+  function atNum(v) { return Math.max(0, Number(String(v === undefined || v === null ? '' : v).replace(',', '.')) || 0); }
+  /* jam kerja sehari (menit): diisi manual (jam) atau otomatis = jadwal masuk-pulang − istirahat */
+  function atKerja(durasi, ist, jk) { return jk !== '' && jk !== undefined && atNum(jk) > 0 ? Math.round(atNum(jk) * 60) : Math.max(0, durasi - ist); }
+  function atCalc(r) {
+    var normal = AT.data ? AT.data.normal : 0, ist = Math.max(0, Math.floor(atNum(AT.opt.ist))), kerja = atKerja(r.durasi, ist, AT.opt.jk), hari = Math.floor(atNum(r.hari));
+    var on = AT.opt.auto && !r.harian, lebih = on ? Math.max(0, hari - normal) : 0, oto = lebih * kerja, tam = Math.round(atNum(r.lem) * 60);
+    return { oto: oto, total: oto + tam, lebih: lebih, hari: hari };
   }
-  function hj(m) { return Math.floor(m / 60) + ' jam' + (m % 60 ? ' ' + (m % 60) + ' menit' : ''); }
-  function amInfoHtml() {
-    var r = amRule();
-    return '<b>' + X.periodeLabel(AM.p) + '</b>: ' + r.dim + ' hari, ' + r.minggu + ' hari Minggu libur → <b>' + r.normal + ' hari kerja normal</b>.<br>' +
-      (r.harian ? 'Pegawai harian: tidak ada lembur otomatis (gaji = tarif × hari hadir).<br>' : (r.on ? 'Jam kerja sehari ' + hj(r.kerja) + ' (jadwal dikurangi istirahat). Masuk ' + r.hari + ' hari → kelebihan <b>' + r.lebih + ' hari</b> = lembur otomatis <b>' + hj(r.oto) + '</b>.<br>' : 'Lembur otomatis dimatikan.<br>')) +
-      'Lembur tambahan: ' + hj(r.tam) + ' · <b>Total lembur disimpan: ' + hj(r.total) + '</b>';
+  function atDirty(r) {
+    var o = r.o, optCh = AT.opt.auto !== AT.init.auto || Number(AT.opt.ist) !== AT.init.ist || String(AT.opt.jk) !== String(AT.init.jk);
+    return String(atNum(r.hari)) !== String(o.hari) || String(atNum(r.lem)) !== String(o.lem) || String(atNum(r.telH)) !== String(o.telH) || String(atNum(r.telM)) !== String(o.telM) || (optCh && atNum(r.hari) > 0);
   }
-  function amTotalBody() {
-    var f = AM.f, t = AM.t, hadirNow = AM.rows.filter(function (r) { return r.hadir; }).length, lemNow = AM.rows.reduce(function (a, r) { return a + (r.hadir ? r.lembur : 0); }, 0);
-    var maxHari = AM.rows.filter(function (r) { return !r.future && !r.app; }).length + AM.rows.filter(function (r) { return r.app; }).length;
-    var num = function (id, label, val, attrs, help) { return '<div class="field" style="margin:0"><label for="' + id + '">' + label + '</label><input class="inp" id="' + id + '" type="number" inputmode="decimal" value="' + esc(val) + '" ' + attrs + '>' + (help ? '<span class="help">' + help + '</span>' : '') + '</div>'; };
-    return '<div class="card" style="margin-bottom:12px"><div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center"><b>' + esc(f.nama) + '</b><span class="badge b-info">Sekarang: ' + hadirNow + ' hari hadir</span><span class="badge b-n">Lembur ' + Math.floor(lemNow / 60) + ' j ' + (lemNow % 60) + ' m</span><span class="muted" style="font-size:12px">Jadwal ' + esc(amJadwal().masuk) + '–' + esc(amJadwal().pulang) + '</span></div></div>' +
-      '<div class="card"><div class="row2">' + num('tthari', 'Masuk berapa hari bulan ini', t.hari, 'min="0" max="31" step="1" placeholder="mis. 30"', 'Maksimal ' + maxHari + ' hari (sampai hari ini).') + num('ttlembur', 'Lembur tambahan (jam)', t.lembur, 'min="0" step="0.5" placeholder="mis. 24"', 'Lembur di luar kelebihan hari. Boleh desimal, mis. 7,5 jam.') + '</div>' +
-      '<label class="chk" style="margin-top:12px"><input type="checkbox" id="ttauto" ' + (t.auto ? 'checked' : '') + '><span>Libur tiap Minggu: hari masuk di atas hari kerja normal dihitung lembur 1 hari penuh (otomatis)</span></label>' +
-      '<div class="row2" style="margin-top:8px">' + num('ttist', 'Istirahat per hari (menit)', t.istirahat, 'min="0" max="240" step="5"', 'Dikurangkan dari jam masuk–pulang.') + '<div class="field" style="margin:0"><label>Rincian hitungan</label><div class="card flat" id="ttinfo" style="padding:10px 12px;font-size:13px;line-height:1.6">' + amInfoHtml() + '</div></div></div>' +
-      '<div class="lbl" style="margin:14px 0 6px">TERLAMBAT (OPSIONAL)</div><div class="row2">' + num('tttelhari', 'Terlambat berapa hari', t.telHari, 'min="0" max="31" step="1" placeholder="0"') + num('tttelmenit', 'Total menit terlambat', t.telMenit, 'min="0" step="1" placeholder="0"', 'Dari jadwal masuk; dibagi rata ke hari terlambat.') + '</div>' +
-      (f.shifts.length ? '<div class="field" style="margin-top:12px"><label>Shift</label>' + selHtml('amshift', f.shifts.map(function (s) { return { v: s.id_shift, l: s.nama + ' · ' + s.jam_masuk + '–' + s.jam_pulang }; }), AM.shift, 260) + '</div>' : '') +
-      '<div class="field" style="margin-top:12px"><label>Catatan / alasan input manual</label><input class="inp" id="amalasan" value="' + esc(AM.alasan) + '" maxlength="150"></div>' +
-      (can('can_approve_lembur') ? '<label class="chk" style="margin-top:8px"><input type="checkbox" id="amsetuju" ' + (AM.setujui ? 'checked' : '') + '><span>Setujui lembur sekaligus (bila tidak, lembur menunggu persetujuan)</span></label>' : '<p class="help" style="margin-top:8px">Lembur yang Anda isi akan menunggu persetujuan.</p>') +
-      '<p class="help" style="margin-top:10px">Sistem membuat absen per hari secara otomatis (Sen–Jum dahulu, lalu Sabtu, Minggu) dan <b>mengganti</b> absen manual lama bulan ini. Absen asli (berfoto dari aplikasi) tidak diubah dan ikut dihitung dalam total.</p>' +
-      '<div style="margin-top:12px"><button class="btn btn-p" data-act="am-tsave">' + ico('check', 'sm') + 'Simpan Total</button></div></div>';
+  function atCount() { return AT.rows.filter(atDirty).length; }
+  function atShell() {
+    var n = atCount();
+    var bar = '<div class="toolbar" style="gap:8px"><div style="display:flex;align-items:center;gap:6px"><button class="btn btn-g btn-s" data-act="am-prev" aria-label="Bulan sebelumnya">' + ico('chevL', 'sm') + '</button><b style="min-width:132px;text-align:center">' + X.periodeLabel(AM.p) + '</b><button class="btn btn-g btn-s" data-act="am-next" aria-label="Bulan berikutnya" ' + (AM.p >= X.periodeNow() ? 'disabled' : '') + '>' + ico('chevR', 'sm') + '</button></div>' +
+      selHtml('amcomp', [{ v: '', l: 'Semua perusahaan' }].concat(compOptions()), AM.comp, 190) + '<span id="amcabw">' + cabSel('amcab', AM.comp, AM.cab) + '</span>' +
+      '<div class="search grow" style="min-width:160px"><span>' + ico('search', 'sm') + '</span><input class="inp" id="atq" placeholder="Cari nama / cabang…" value="' + esc(AT.q) + '" aria-label="Cari"></div>' +
+      '<button class="btn btn-p" id="atsave" data-act="at-save" ' + (n ? '' : 'disabled') + '>' + ico('check', 'sm') + 'Simpan' + (n ? ' (' + n + ')' : '') + '</button></div>';
+    var seg = '<div class="toolbar"><div class="seg" role="tablist"><button role="tab" class="on" data-act="am-mode" data-m="total">Total Sebulan</button><button role="tab" data-act="am-mode" data-m="hari">Per Hari</button></div></div>';
+    var opt = '<div class="card" style="margin-bottom:12px;padding:12px 14px"><div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center">' +
+      '<label class="chk"><input type="checkbox" id="atauto" ' + (AT.opt.auto ? 'checked' : '') + '><span>Libur tiap Minggu: hari masuk di atas hari kerja normal = lembur 1 hari penuh</span></label>' +
+      '<label style="display:flex;gap:6px;align-items:center">Istirahat <input class="inp" id="atist" type="number" min="0" max="240" step="5" style="width:72px;min-height:34px;padding:4px 8px" value="' + esc(AT.opt.ist) + '"> menit</label>' +
+      '<label style="display:flex;gap:6px;align-items:center" title="Kosongkan agar otomatis (jam masuk-pulang dikurangi istirahat)">Jam kerja sehari <input class="inp" id="atjk" type="number" min="0" max="24" step="0.5" style="width:78px;min-height:34px;padding:4px 8px" placeholder="otomatis" value="' + esc(AT.opt.jk) + '"> jam</label>' +
+      (can('can_approve_lembur') ? '<label class="chk"><input type="checkbox" id="atsetuju" ' + (AT.opt.setujui ? 'checked' : '') + '><span>Setujui lembur sekaligus</span></label>' : '<span class="help">Lembur menunggu persetujuan.</span>') +
+      '<input class="inp" id="atalasan" style="flex:1;min-width:180px;min-height:34px" maxlength="150" placeholder="Catatan / alasan input" value="' + esc(AT.opt.alasan) + '"></div>' +
+      '<p class="help" id="atinfo" style="margin-top:8px">' + atInfo() + '</p></div>';
+    return '<div class="page"><div id="ambar">' + bar + '</div>' + seg + opt + '<div id="atbody">' + atTable() + '</div></div>';
   }
+  function atInfo() {
+    var d = AT.data; if (!d) return 'Memuat…';
+    return '<b>' + X.periodeLabel(AM.p) + '</b>: ' + d.dim + ' hari, ' + d.minggu + ' hari Minggu libur → <b>' + d.normal + ' hari kerja normal</b>. Isi <b>hari masuk</b> per karyawan; kelebihan di atas ' + d.normal + ' hari otomatis jadi lembur penuh (jam kerja sehari: otomatis dari jadwal − istirahat, atau isi manual di kolom "Jam kerja sehari"). Isian lembur tambahan, terlambat, dan istirahat bersifat opsional. Hanya baris yang diubah yang disimpan; absen manual lama bulan ini diganti, absen asli (foto) tidak diubah.';
+  }
+  function atRowHtml(r, i) {
+    var c = atCalc(r), inp = function (f, w, extra) { return '<td class="num"><input class="inp ati' + (String(atNum(r[f])) !== String(r.o[f]) ? ' dirty' : '') + '" data-f="' + f + '" type="number" inputmode="decimal" min="0" ' + (extra || '') + ' style="width:' + w + 'px;min-height:34px;padding:5px 8px;text-align:right;font-family:var(--mono)" value="' + esc(r[f] === 0 || r[f] === '0' ? '' : r[f]) + '" placeholder="0" aria-label="' + f + ' ' + esc(r.nama) + '"></td>'; };
+    return '<tr data-i="' + i + '" data-q="' + esc((r.nama + ' ' + r.cabang).toLowerCase()) + '"><td class="muted">' + (i + 1) + '</td><td><b>' + esc(r.nama) + '</b><div class="muted" style="font-size:11px">' + esc(r.cabang) + (r.harian ? ' · harian' : '') + (r.real ? ' · ' + r.real + ' absen asli' : '') + '</div></td><td class="mono muted" style="font-size:12px">' + esc(r.jadwal) + '</td>' +
+      inp('hari', 72, 'max="31" step="1"') + inp('lem', 84, 'step="0.5"') + inp('telH', 72, 'max="31" step="1"') + inp('telM', 84, 'step="1"') +
+      '<td class="num mono at-oto">' + (c.oto ? hj(c.oto) : '-') + '</td><td class="num mono at-tot"><b>' + (c.total ? hj(c.total) : '-') + '</b></td><td class="at-st">' + (atDirty(r) ? '<span class="badge b-warn">diubah</span>' : '') + '</td></tr>';
+  }
+  function atTable() {
+    if (!AT.data) return X.skel(8, 44);
+    if (!AT.rows.length) return '<div class="card flat">' + X.empty('users', 'Tidak ada karyawan', 'Ubah filter perusahaan / cabang.') + '</div>';
+    return '<div class="card flat" style="padding:0;overflow:hidden"><div style="overflow:auto;max-height:66vh"><table class="t" id="att"><thead><tr><th>No</th><th>Karyawan</th><th>Jadwal</th><th class="num">Hari masuk</th><th class="num">Lembur tambahan (jam)</th><th class="num">Terlambat (hari)</th><th class="num">Terlambat (menit)</th><th class="num">Lembur otomatis</th><th class="num">Total lembur</th><th></th></tr></thead><tbody>' + AT.rows.map(atRowHtml).join('') + '</tbody></table></div></div>';
+  }
+  function atLoad() {
+    AT.data = null; AT.rows = []; atRepaint();
+    var p = AM.p, comp = AM.comp, cab = AM.cab;
+    X.api('absen.totalList', { periode: p, id_perusahaan: comp, id_cabang: cab }, { quiet: true }).then(function (r) {
+      if (AM.mode !== 'total' || AM.p !== p) return; if (!r.success) { X.toast(r.message, 'err'); return; }
+      AT.data = r.data; AT.init = { auto: AT.opt.auto, ist: Number(AT.opt.ist) || 0, jk: AT.opt.jk };
+      AT.rows = r.data.rows.map(function (x) {
+        var kerja = atKerja(x.durasi_menit, AT.init.ist, AT.init.jk), lebih = (AT.opt.auto && !x.harian) ? Math.max(0, x.hadir - r.data.normal) : 0, tam = Math.max(0, x.lembur_menit - lebih * kerja);
+        var o = { hari: x.hadir, lem: tam ? Math.round(tam / 6) / 10 : 0, telH: x.telat_hari, telM: x.telat_menit };
+        return { id: x.id_karyawan, nama: x.nama, cabang: x.cabang, harian: x.harian, durasi: x.durasi_menit, jadwal: x.jadwal, real: x.real, o: o, hari: o.hari, lem: o.lem, telH: o.telH, telM: o.telM };
+      });
+      atRepaint();
+    });
+  }
+  function atRepaint() { var el = AM.el; if (!el || AM.mode !== 'total') return; var y = window.scrollY; el.innerHTML = atShell(); atBind(); window.scrollTo(0, y); atFilter(); }
+  function atFilter() { var q = (AT.q || '').toLowerCase().trim(); X.$$('#att tbody tr').forEach(function (tr) { tr.style.display = !q || tr.dataset.q.indexOf(q) >= 0 ? '' : 'none'; }); }
+  function atRefreshInfoAll() { var inf = $('#atinfo'); if (inf) inf.innerHTML = atInfo(); var b = $('#atsave'), n = atCount(); if (b) { b.disabled = !n || AT.busy; b.innerHTML = ico('check', 'sm') + 'Simpan' + (n ? ' (' + n + ')' : ''); } }
+  function atRefreshRow(tr) {
+    var r = AT.rows[+tr.dataset.i], c = atCalc(r); tr.querySelector('.at-oto').textContent = c.oto ? hj(c.oto) : '-'; tr.querySelector('.at-tot').innerHTML = '<b>' + (c.total ? hj(c.total) : '-') + '</b>';
+    tr.querySelector('.at-st').innerHTML = atDirty(r) ? '<span class="badge b-warn">diubah</span>' : '';
+    tr.querySelectorAll('.ati').forEach(function (n) { n.classList.toggle('dirty', String(atNum(r[n.dataset.f])) !== String(r.o[n.dataset.f])); });
+    atRefreshInfoAll();
+  }
+  function atBind() {
+    var el = AM.el, g = function (id, fn) { var n = $('#' + id, el); if (n) n.onchange = function () { fn(n.value); }; };
+    g('amcomp', function (v) { AM.comp = v; AM.cab = ''; atLoad(); });
+    g('amcab', function (v) { AM.cab = v; atLoad(); });
+    var q = $('#atq', el); if (q) q.oninput = function () { AT.q = q.value; atFilter(); };
+    var chg = function () { X.$$('#att tbody tr', el).forEach(atRefreshRow); atRefreshInfoAll(); };
+    var au = $('#atauto', el); if (au) au.onchange = function () { AT.opt.auto = au.checked; chg(); };
+    var is = $('#atist', el); if (is) is.oninput = function () { AT.opt.ist = is.value; chg(); };
+    var jk = $('#atjk', el); if (jk) jk.oninput = function () { AT.opt.jk = jk.value; chg(); };
+    var su = $('#atsetuju', el); if (su) su.onchange = function () { AT.opt.setujui = su.checked; };
+    var al = $('#atalasan', el); if (al) al.oninput = function () { AT.opt.alasan = al.value; };
+    var tb = $('#att tbody', el); if (tb) tb.oninput = function (e) { var t = e.target; if (!t.classList.contains('ati')) return; var tr = t.closest('tr'); AT.rows[+tr.dataset.i][t.dataset.f] = t.value; atRefreshRow(tr); };
+  }
+  X.ACT['at-save'] = function (b) {
+    var ch = AT.rows.filter(atDirty); if (!ch.length || AT.busy) return;
+    var over = ch.filter(function (r) { return atNum(r.hari) > 31; }); if (over.length) return X.toast('Hari masuk maksimal 31 (' + over[0].nama + ').', 'warn');
+    AT.busy = true; var done = 0, fails = [], p = AM.p, chunks = []; for (var i = 0; i < ch.length; i += 5) chunks.push(ch.slice(i, i + 5));
+    var next = function (k) {
+      if (k >= chunks.length) {
+        AT.busy = false; X.toast((ch.length - fails.length) + ' karyawan tersimpan' + (fails.length ? ', ' + fails.length + ' gagal.' : '.'), fails.length ? 'warn' : undefined);
+        fails.slice(0, 3).forEach(function (f) { X.toast(f.nama + ': ' + f.message, 'warn'); });
+        X.invalidate('hmon:'); X.invalidate('hrk:'); X.invalidate('lbr:'); X.invalidate('hist:'); X.invalidate('dash:'); X.invalidate('pay'); atLoad(); return;
+      }
+      b.disabled = true; b.innerHTML = '<span class="spin"></span>Menyimpan ' + done + '/' + ch.length + '…';
+      X.api('absen.totalBulk', { periode: p, alasan: AT.opt.alasan || 'Input total sebulan', setujui: AT.opt.setujui, auto_libur: AT.opt.auto, istirahat_menit: AT.opt.ist === '' ? 60 : Number(AT.opt.ist), jam_kerja_menit: atNum(AT.opt.jk) > 0 ? Math.round(atNum(AT.opt.jk) * 60) : 0,
+        items: chunks[k].map(function (r) { return { id_karyawan: r.id, hari: Math.floor(atNum(r.hari)), lembur_jam: atNum(r.lem), telat_hari: Math.floor(atNum(r.telH)), telat_menit: Math.floor(atNum(r.telM)) }; }) }, { quiet: true }).then(function (res) {
+        if (!res.success) { chunks[k].forEach(function (r) { fails.push({ nama: r.nama, message: res.message }); }); }
+        else res.data.hasil.forEach(function (h) { if (!h.success) fails.push({ nama: h.nama, message: h.message }); });
+        done += chunks[k].length; next(k + 1);
+      });
+    };
+    next(0);
+  };
   function amLoad() {
     if (!AM.emp) { AM.f = null; AM.rows = []; return amRepaint(); }
     var id = AM.emp, p = AM.p; AM.f = null; amRepaint();
@@ -646,22 +718,18 @@
       if (AM.emp !== id || AM.p !== p) return; if (!r.success) { X.toast(r.message, 'err'); return; }
       AM.f = r.data; AM.shift = r.data.default_shift; var j = amJadwal();
       AM.rows = r.data.days.map(function (d) { var o = { hadir: d.hadir, masuk: d.masuk, pulang: d.pulang, alasan_lembur: d.alasan_lembur }; return { tanggal: d.tanggal, dow: d.dow, future: d.future, app: d.dari_aplikasi, hadir: d.hadir, masuk: d.masuk, pulang: d.pulang, lembur: d.lembur, alasan_lembur: d.alasan_lembur, status_lembur: d.status_lembur, id_shift: d.id_shift, o: o }; });
-      var hh = AM.rows.filter(function (r) { return r.hadir; }).length, ll = AM.rows.reduce(function (a, r) { return a + (r.hadir ? r.lembur : 0); }, 0);
-      AM.t = { hari: hh || '', lembur: '', telHari: '', telMenit: '', auto: true, istirahat: 60 };
-      var ru = amRule(); AM.t.lembur = Math.max(0, ll - ru.oto) ? Math.round((ll - ru.oto) / 6) / 10 : '';
       amRepaint();
     });
   }
   function amRepaint() { var el = AM.el; if (!el) return; var y = window.scrollY; el.innerHTML = amShell(); amBind(); window.scrollTo(0, y); }
   function amBind() {
+    if (AM.mode === 'total') return atBind();
     var el = AM.el, g = function (id, fn) { var n = $('#' + id, el); if (n) n.onchange = function () { fn(n.value); }; };
     g('amcomp', function (v) { AM.comp = v; AM.cab = ''; AM.emp = ''; AM.f = null; amRepaint(); });
     g('amcab', function (v) { AM.cab = v; AM.emp = ''; AM.f = null; amRepaint(); });
     g('amemp', function (v) { AM.emp = v; amLoad(); });
     g('amshift', function (v) { AM.shift = v; amRepaint(); });
     var al = $('#amalasan', el); if (al) al.oninput = function () { AM.alasan = al.value; };
-    [['tthari', 'hari'], ['ttlembur', 'lembur'], ['tttelhari', 'telHari'], ['tttelmenit', 'telMenit'], ['ttist', 'istirahat']].forEach(function (p) { var n = $('#' + p[0], el); if (n) n.oninput = function () { AM.t[p[1]] = n.value; var i = $('#ttinfo', el); if (i) i.innerHTML = amInfoHtml(); }; });
-    var ta = $('#ttauto', el); if (ta) ta.onchange = function () { AM.t.auto = ta.checked; var i = $('#ttinfo', el); if (i) i.innerHTML = amInfoHtml(); };
     var su = $('#amsetuju', el); if (su) su.onchange = function () { AM.setujui = su.checked; };
     var tb = $('#ambody tbody', el); if (!tb) return;
     var rowOf = function (e) { var tr = e.target.closest('tr[data-i]'); return tr ? { tr: tr, r: AM.rows[+tr.dataset.i] } : null; };
@@ -680,9 +748,9 @@
     var body = $('#ambody'); if (!body) return; var sc = body.querySelector('div[style*="overflow:auto"]'), top = sc ? sc.scrollTop : 0; body.innerHTML = amBody(); amBind();
     var sc2 = body.querySelector('div[style*="overflow:auto"]'); if (sc2) sc2.scrollTop = top;
   }
-  V.amanual = { render: function (el) { AM.el = el; AM.p = AM.p || X.periodeNow(); el.innerHTML = amShell(); amBind(); if (AM.emp && !AM.f) amLoad(); } };
-  X.ACT['am-prev'] = function () { AM.p = X.periodeShift(AM.p, -1); amLoad(); };
-  X.ACT['am-next'] = function () { if (AM.p < X.periodeNow()) { AM.p = X.periodeShift(AM.p, 1); amLoad(); } };
+  V.amanual = { render: function (el) { AM.el = el; AM.p = AM.p || X.periodeNow(); el.innerHTML = amShell(); amBind(); if (AM.mode === 'total') atLoad(); else if (AM.emp && !AM.f) amLoad(); } };
+  X.ACT['am-prev'] = function () { AM.p = X.periodeShift(AM.p, -1); if (AM.mode === 'total') atLoad(); else amLoad(); };
+  X.ACT['am-next'] = function () { if (AM.p < X.periodeNow()) { AM.p = X.periodeShift(AM.p, 1); if (AM.mode === 'total') atLoad(); else amLoad(); } };
   X.ACT['am-preset'] = function (b) {
     var k = +b.dataset.k, j = amJadwal();
     AM.rows.forEach(function (r) {
@@ -692,16 +760,7 @@
     });
     amRepaintKeep();
   };
-  X.ACT['am-mode'] = function (b) { AM.mode = b.dataset.m; amRepaint(); };
-  X.ACT['am-tsave'] = function (b) {
-    var t = AM.t; if (t.hari === '' || isNaN(Number(t.hari))) return X.toast('Isi jumlah hari masuk.', 'warn');
-    var id = AM.emp, p = AM.p; b.disabled = true; b.innerHTML = '<span class="spin"></span>Menyimpan…';
-    X.api('absen.total', { id_karyawan: id, periode: p, hari: Number(t.hari), lembur_jam: Number(String(t.lembur || 0).replace(',', '.')) || 0, telat_hari: Number(t.telHari) || 0, telat_menit: Number(t.telMenit) || 0, auto_libur: !!t.auto, istirahat_menit: t.istirahat === '' ? 60 : Number(t.istirahat), alasan: AM.alasan || 'Input total bulanan', setujui: AM.setujui, id_shift: AM.shift }).then(function (res) {
-      b.disabled = false; b.innerHTML = ico('check', 'sm') + 'Simpan Total';
-      if (!res.success) return X.toast(res.message, 'err');
-      X.toast(res.message); X.invalidate('hmon:'); X.invalidate('hrk:'); X.invalidate('lbr:'); X.invalidate('hist:'); X.invalidate('dash:'); X.invalidate('pay'); amLoad();
-    });
-  };
+  X.ACT['am-mode'] = function (b) { AM.mode = b.dataset.m; amRepaint(); if (AM.mode === 'total') atLoad(); else if (AM.emp && !AM.f) amLoad(); };
   X.ACT['am-save'] = function (b) {
     var ch = AM.rows.filter(amDirty); if (!ch.length) return; var bad = ch.filter(function (r) { return r.hadir && (!r.masuk); });
     if (bad.length) return X.toast('Jam masuk wajib diisi pada ' + bad.length + ' hari.', 'warn');

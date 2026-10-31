@@ -321,14 +321,32 @@
     LS.setRaw('token', S.token); LS.set('boot', S.boot);
     $('#login').classList.remove('on'); $('#login').innerHTML = ''; $('#app').classList.add('on');
     go(LS.raw('route') && allowed(LS.raw('route')) ? LS.raw('route') : homeRoute());
-    prefetch();
+    prefetch(); waGate();
+  }
+  /* Wajib isi nomor WhatsApp: dialog tanpa tombol tutup selama no_wa masih kosong */
+  var WAG = null;
+  function waGate() {
+    if (!S.boot || !S.boot.me || S.boot.me.no_wa || WAG) return;
+    var m = modal({ title: 'Isi Nomor WhatsApp Anda', focus: true,
+      body: '<p style="color:var(--muted);margin-bottom:12px">Nomor WhatsApp wajib diisi sebelum memakai aplikasi. Dipakai untuk pengingat absensi dan info slip gaji.</p><div class="field"><label for="wag">Nomor WhatsApp</label><input class="inp" id="wag" inputmode="tel" placeholder="081234567890 atau 6281234567890" autocomplete="tel"><span class="help">Boleh diawali 0 atau 62.</span></div><div class="errmsg" id="wagerr" style="min-height:18px"></div>',
+      footer: '<button class="btn btn-p" id="wagsv">Simpan & Lanjut</button>' });
+    WAG = m; m.el.querySelector('[data-close]').style.display = 'none';
+    var close = m.close; m.close = function () { if (S.boot && S.boot.me && !S.boot.me.no_wa) return; WAG = null; close(); };
+    m.$('#wagsv').onclick = function () {
+      var v = m.$('#wag').value, b = m.$('#wagsv'), er = m.$('#wagerr'); er.textContent = ''; b.disabled = true;
+      api('profil.updateWa', { no_wa: v }).then(function (r) {
+        b.disabled = false; if (!r.success) { er.textContent = r.message; return; }
+        S.boot.me.no_wa = r.data.no_wa; LS.set('boot', S.boot); var p = $('#pwa'); if (p) p.textContent = r.data.no_wa; m.close(); toast('Nomor WhatsApp tersimpan.');
+      });
+    };
+    m.$('#wag').onkeydown = function (e) { if (e.key === 'Enter') m.$('#wagsv').click(); };
   }
   function refreshBoot() {
     return api('boot', {}, { quiet: true }).then(function (r) {
       if (!r.success) { if (r.code !== 'AUTH' && r.code !== 'NET') toast(r.message, 'err'); return; }
       var changed = JSON.stringify(r.data) !== JSON.stringify(S.boot);
       S.off = (r.data.serverNow || Date.now()) - Date.now();
-      if (changed) { var role = S.boot.me.role; S.boot = r.data; S.tz = r.data.schedule.tz || S.tz; LS.set('boot', S.boot); if (role !== r.data.me.role) { go(homeRoute()); } else { renderChrome(); if (views[S.route] && views[S.route].onBoot) views[S.route].onBoot(); } }
+      if (changed) { var role = S.boot.me.role; S.boot = r.data; S.tz = r.data.schedule.tz || S.tz; LS.set('boot', S.boot); if (role !== r.data.me.role) { go(homeRoute()); } else { renderChrome(); if (views[S.route] && views[S.route].onBoot) views[S.route].onBoot(); } waGate(); }
     });
   }
   function prefetch() {
@@ -465,7 +483,7 @@
     var tok = LS.raw('token'), boot = LS.get('boot');
     if (tok && boot && boot.me) {                        // sesi tersimpan: tampil 0 ms dari cache, validasi di latar
       S.token = tok; S.boot = boot; S.tz = (boot.schedule && boot.schedule.tz) || S.tz;
-      $('#app').classList.add('on'); go(LS.raw('route') && allowed(LS.raw('route')) ? LS.raw('route') : homeRoute()); prefetch(); refreshBoot(); return;
+      $('#app').classList.add('on'); go(LS.raw('route') && allowed(LS.raw('route')) ? LS.raw('route') : homeRoute()); prefetch(); refreshBoot(); waGate(); return;
     }
     showLogin();
     api('app.publicInfo', {}, { quiet: true }).then(function (r) { if (r.success) { LS.set('pubinfo', r.data); var c = $('#lgchip'); if (c) c.innerHTML = ico('building', 'sm') + r.data.jumlahPerusahaan + ' Perusahaan Terafiliasi'; } });
