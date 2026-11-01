@@ -109,7 +109,9 @@ svg.i.sm{width:16px;height:16px} svg.i.lg{width:24px;height:24px}
 .page{padding:16px;max-width:1280px;margin:0 auto}
 .page.narrow{max-width:520px}
 .bnav{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--surface);border-top:1px solid var(--border);display:flex;padding:6px 6px calc(6px + var(--safe-b));box-shadow:0 -4px 16px rgba(15,23,42,.05)}
-.bnav a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:52px;border-radius:12px;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;transition:color .12s,background .12s;position:relative}
+.bnav a{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;height:52px;padding:0 2px;border-radius:12px;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;transition:color .12s,background .12s;position:relative}
+.bnav a span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.1;text-align:center}
+.bnav a svg{flex:none}
 .bnav a.on{color:var(--primary)} .bnav a.on::before{content:"";position:absolute;top:-7px;width:28px;height:3px;border-radius:0 0 4px 4px;background:var(--primary)}
 .view{animation:fin .16s ease-out}
 @keyframes fin{from{opacity:.4;transform:translateY(3px)}to{opacity:1;transform:none}}

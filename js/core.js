@@ -265,12 +265,12 @@
     PEGAWAI: [['absen', 'Absen', 'clock'], ['riwayat', 'Riwayat', 'calendar'], ['slip', 'Slip Gaji', 'file'], ['profil', 'Profil', 'user']],
     FINANCE: [['fhome', 'Beranda', 'home'], ['gaji', 'Master Gaji', 'db', ['can_master_gaji']], ['adj', 'Potongan', 'edit', ['can_manage_kasbon', 'can_manage_bonus', 'can_koreksi_lembur', 'can_generate_payroll']], ['bonus', 'Bonus', 'gift', ['can_manage_bonus']], ['payroll', 'Payroll', 'card', ['can_generate_payroll', 'can_send_payslip']],
       'Akun Saya', ['absen', 'Absen', 'clock'], ['riwayat', 'Riwayat', 'calendar'], ['slip', 'Slip Saya', 'file'], ['profil', 'Profil', 'user']],
-    HR: [['hmon', 'Monitor Absen', 'users'], ['hrekap', 'Rekap Bulanan', 'calendar'], ['amanual', 'Input Absen Bulanan', 'edit', ['can_edit_absen']], ['lembur', 'Persetujuan Lembur', 'check', ['can_approve_lembur']],
+    HR: [['hmon', 'Monitor Absen', 'users'], ['hrekap', 'Rekap Bulanan', 'calendar'], ['amanual', 'Input Absen Bulanan', 'edit', ['can_edit_absen']], ['izin', 'Izin & Sakit', 'user', ['can_edit_absen']], ['lembur', 'Persetujuan Lembur', 'check', ['can_approve_lembur']],
       'Akun Saya', ['absen', 'Absen', 'clock'], ['riwayat', 'Riwayat', 'calendar'], ['slip', 'Slip Saya', 'file'], ['profil', 'Profil', 'user']],
-    MANAJEMEN: [['dash', 'Dashboard', 'grid'], ['master', 'Master Data', 'db'], ['hmon', 'Monitor Absen', 'users'], ['hrekap', 'Rekap Absen', 'calendar'], ['amanual', 'Input Absen Bulanan', 'edit'], ['lembur', 'Persetujuan Lembur', 'check'], ['payroll', 'Payroll', 'card'], ['gaji', 'Master Gaji', 'db'], ['adj', 'Potongan', 'edit'], ['bonus', 'Bonus', 'gift'], 'Sistem', ['akses', 'Hak Akses', 'shield'], ['wa', 'Pengaturan', 'sliders'], ['migrasi', 'Migrasi Data', 'upload'], ['profil', 'Profil', 'user']]
+    MANAJEMEN: [['dash', 'Dashboard', 'grid'], ['master', 'Master Data', 'db'], ['hmon', 'Monitor Absen', 'users'], ['hrekap', 'Rekap Absen', 'calendar'], ['amanual', 'Input Absen Bulanan', 'edit'], ['izin', 'Izin & Sakit', 'user'], ['lembur', 'Persetujuan Lembur', 'check'], ['payroll', 'Payroll', 'card'], ['gaji', 'Master Gaji', 'db'], ['adj', 'Potongan', 'edit'], ['bonus', 'Bonus', 'gift'], 'Sistem', ['akses', 'Hak Akses', 'shield'], ['wa', 'Pengaturan', 'sliders'], ['migrasi', 'Migrasi Data', 'upload'], ['profil', 'Profil', 'user']]
   };
   NAV.KEPALA = NAV.HR;
-  NAV.FINANCE.splice(NAV.FINANCE.indexOf('Akun Saya'), 0, ['amanual', 'Input Absen Bulanan', 'edit', ['can_edit_absen']], ['lembur', 'Persetujuan Lembur', 'check', ['can_approve_lembur']]);
+  NAV.FINANCE.splice(NAV.FINANCE.indexOf('Akun Saya'), 0, ['amanual', 'Input Absen Bulanan', 'edit', ['can_edit_absen']], ['izin', 'Izin & Sakit', 'user', ['can_edit_absen']], ['lembur', 'Persetujuan Lembur', 'check', ['can_approve_lembur']]);
   function navItems() {
     var me = S.boot.me, list = NAV[me.role] || NAV.PEGAWAI;
     return list.filter(function (x) { return typeof x === 'string' || !x[3] || me.role === 'MANAJEMEN' || x[3].some(function (k) { return me.perms[k]; }); })
@@ -282,17 +282,17 @@
   function renderChrome() {
     if (!S.boot) return;
     var me = S.boot.me, items = navItems(), sc = S.boot.schedule || {}, real = items.filter(function (x) { return typeof x !== 'string'; });
-    $('#side').innerHTML = '<div class="brand"><span class="logo">' + ico('clock') + '</span><span>' + esc(S.boot.app.nama) + '</span></div><nav class="nav">' +
+    $('#side').innerHTML = '<div class="brand" data-go="' + homeRoute() + '" role="link" tabindex="0" style="cursor:pointer" title="Ke beranda"><span class="logo">' + ico('clock') + '</span><span>' + esc(S.boot.app.nama) + '</span></div><nav class="nav">' +
       items.map(function (x) { return typeof x === 'string' ? '<div class="sec">' + esc(x) + '</div>' : '<a data-go="' + x[0] + '" class="' + (S.route === x[0] ? 'on' : '') + '" role="link" tabindex="0">' + ico(x[2]) + '<span>' + esc(x[1]) + '</span></a>'; }).join('') +
       '</nav><div class="side-foot"><div class="ucard"><span class="av">' + esc(initials(me.nama)) + '</span><div style="min-width:0"><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(me.nama) + '</div><div class="muted" style="font-size:12px">' + esc(me.roleLabel) + '</div></div></div>' +
       '<div style="display:flex;gap:6px"><button class="btn btn-g btn-s" data-act="theme" style="flex:1" aria-label="Ganti tema">' + ico(isDark() ? 'sun' : 'moon', 'sm') + (isDark() ? 'Terang' : 'Gelap') + '</button><button class="btn btn-g btn-s" data-act="logout" aria-label="Keluar">' + ico('logout', 'sm') + 'Keluar</button></div></div>';
-    var bn = real.length > 5 ? real.slice(0, 4) : real, more = real.length > 5;
-    $('#bnav').innerHTML = bn.map(function (x) { return '<a data-go="' + x[0] + '" class="' + (S.route === x[0] ? 'on' : '') + '" role="link" tabindex="0">' + ico(x[2]) + '<span>' + esc(x[1]) + '</span></a>'; }).join('') +
+    var bn = real.length > 5 ? real.slice(0, 4) : real, more = real.length > 5, SHORT = { 'Izin & Sakit': 'Izin', 'Monitor Absen': 'Monitor', 'Rekap Absen': 'Rekap', 'Master Data': 'Master', 'Input Absen Bulanan': 'Input', 'Persetujuan Lembur': 'Lembur', 'Master Gaji': 'Gaji' };   // label ringkas agar satu baris di HP
+    $('#bnav').innerHTML = bn.map(function (x) { return '<a data-go="' + x[0] + '" class="' + (S.route === x[0] ? 'on' : '') + '" role="link" tabindex="0" aria-label="' + esc(x[1]) + '">' + ico(x[2]) + '<span>' + esc(SHORT[x[1]] || x[1]) + '</span></a>'; }).join('') +
       (more ? '<a data-act="more" class="' + (real.slice(4).some(function (x) { return x[0] === S.route; }) ? 'on' : '') + '" role="button" tabindex="0">' + ico('more') + '<span>Lainnya</span></a>' : '');
     var cur = real.filter(function (x) { return x[0] === S.route; })[0], title = cur ? cur[1] : '';
     $('#top').innerHTML = '<div style="display:flex;align-items:center;gap:10px;min-width:0"><div class="brand"><span class="logo" style="width:32px;height:32px;border-radius:10px">' + ico('clock', 'sm') + '</span></div><h1>' + esc(title) + '</h1></div>' +
       '<div style="display:flex;align-items:center;gap:8px">' + (sc.perusahaan ? '<span class="badge b-co only-d">' + ico('building', 'sm') + esc(sc.perusahaan) + '</span>' : '') +
-      '<button class="ibtn" data-act="theme" aria-label="Ganti tema" style="display:inline-grid">' + ico(isDark() ? 'sun' : 'moon') + '</button><button class="av" data-go="profil" aria-label="Profil" style="width:38px;height:38px;cursor:pointer">' + esc(initials(me.nama)) + '</button></div>';
+      '<button class="ibtn" data-go="' + homeRoute() + '" aria-label="Ke beranda" title="Ke beranda" style="display:inline-grid' + (S.route === homeRoute() ? ';color:var(--primary)' : '') + '">' + ico('home') + '</button><button class="ibtn" data-act="theme" aria-label="Ganti tema" style="display:inline-grid">' + ico(isDark() ? 'sun' : 'moon') + '</button><button class="av" data-go="profil" aria-label="Profil" style="width:38px;height:38px;cursor:pointer">' + esc(initials(me.nama)) + '</button></div>';
   }
   function go(name) {
     if (!S.boot) return;

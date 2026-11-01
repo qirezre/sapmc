@@ -14,6 +14,8 @@
   function monthBar(p, prevAct, nextAct) {
     return '<div style="display:flex;align-items:center;gap:6px"><button class="btn btn-g btn-s" data-act="' + prevAct + '" aria-label="Bulan sebelumnya">' + ico('chevL', 'sm') + '</button><b style="min-width:132px;text-align:center">' + X.periodeLabel(p) + '</b><button class="btn btn-g btn-s" data-act="' + nextAct + '" aria-label="Bulan berikutnya">' + ico('chevR', 'sm') + '</button></div>';
   }
+  function cabNm(id) { var c = pick().cabang.filter(function (x) { return x.id === id; })[0]; return c ? c.nama : id; }
+  function cabSelect(id, comp, val) { return '<select class="sel" id="' + id + '" style="min-width:170px;width:auto" aria-label="Filter cabang"><option value="">Semua cabang</option>' + pick().cabang.filter(function (c) { return !comp || c.id_perusahaan === comp; }).map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === val ? ' selected' : '') + '>' + esc(c.nama) + '</option>'; }).join('') + '</select>'; }
   function stat(k, v, s, ic, i) { return '<div class="card stat"><span class="k"><span class="ic ' + ic + '">' + ico(i, 'sm') + '</span>' + k + '</span><span class="v">' + v + '</span><span class="s">' + (s || '&nbsp;') + '</span></div>'; }
   function selectComp(id, val, all) { return '<select class="sel" id="' + id + '" style="min-width:190px;width:auto" aria-label="Filter perusahaan">' + compOpts(all).map(function (o) { return '<option value="' + esc(o.v) + '"' + (o.v === val ? ' selected' : '') + '>' + esc(o.l) + '</option>'; }).join('') + '</select>'; }
   (V.__prefetch = V.__prefetch || []).push(function (role, p) {
@@ -176,7 +178,7 @@
   };
 
   /* ---------------------------------------------------------------- PAYROLL */
-  var P = { p: '', comp: '', data: null, el: null, run: false };
+  var P = { p: '', comp: '', cab: '', data: null, el: null, run: false };
   function stepsHtml() {
     var has = P.data && P.data.rows.length, sv = has && P.data.rows.some(function (r) { return r.status !== 'BELUM'; }), pdf = has && P.data.rows.some(function (r) { return r.status === 'PDF_SIAP' || r.status === 'TERKIRIM'; }), snt = has && P.data.rows.some(function (r) { return r.status === 'TERKIRIM'; });
     var s = [['Hitung', has], ['Simpan Draft', sv], ['Buat PDF', pdf], ['Kirim Email', snt]];
@@ -185,8 +187,8 @@
   function payShell() {
     var d = P.data, t = d && d.total;
     var acts = '<div style="display:flex;gap:8px;flex-wrap:wrap">' + (can('can_generate_payroll') ? '<button class="btn btn-g" data-act="py-save" ' + (d && d.rows.length ? '' : 'disabled') + '>' + ico('db', 'sm') + 'Simpan Draft</button><button class="btn btn-g" data-act="py-pdf" ' + (d && d.rows.some(function (r) { return r.status !== 'BELUM'; }) ? '' : 'disabled') + '>' + ico('file', 'sm') + 'Buat PDF</button>' : '') + (can('can_send_payslip') ? '<button class="btn btn-p" data-act="py-send" ' + (d && d.rows.some(function (r) { return r.status === 'PDF_SIAP' || r.status === 'GAGAL'; }) ? '' : 'disabled') + '>' + ico('send', 'sm') + 'Kirim Email</button>' : '') + '</div>';
-    return '<div class="page">' + stepsHtml() + '<div class="toolbar">' + monthBar(P.p, 'py-prev', 'py-next') + selectComp('pyc', P.comp, true) + '<button class="btn btn-p" data-act="py-calc" id="pycalc">' + ico('refresh', 'sm') + 'Hitung Payroll</button></div>' +
-      (d ? '<div class="grid g4 keep" style="margin-bottom:14px">' + stat('Karyawan', t.karyawan, X.periodeLabel(P.p), 'ic-p', 'users') + stat('Total THP', rp(t.thp), '', 'ic-ok', 'card') + stat('Total Potongan', rp(t.potongan), '', 'ic-b', 'alert') + stat('Total Lembur', rp(t.lembur), '', 'ic-i', 'trend') + '</div><div class="toolbar">' + acts + '</div><div id="pyt"></div>' : '<div class="card flat">' + X.empty('card', 'Mulai dengan menghitung payroll', 'Pilih periode dan perusahaan lalu tekan “Hitung Payroll”. Hasil hanya pratinjau sampai Anda menyimpannya sebagai draft.') + '</div>') + '</div>';
+    return '<div class="page">' + stepsHtml() + '<div class="toolbar">' + monthBar(P.p, 'py-prev', 'py-next') + selectComp('pyc', P.comp, true) + cabSelect('pycab', P.comp, P.cab) + '<button class="btn btn-p" data-act="py-calc" id="pycalc">' + ico('refresh', 'sm') + 'Hitung Payroll</button><button class="btn btn-g" data-act="py-xlsx" title="Unduh rekap gaji semua perusahaan dan cabang untuk bulan ini (Excel)">' + ico('download', 'sm') + 'Rekap Gaji (Excel)</button></div>' +
+      (d ? '<div class="grid keep" style="margin-bottom:14px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))">' + stat('Karyawan', t.karyawan, X.periodeLabel(P.p) + (P.cab ? ' · ' + cabNm(P.cab) : ''), 'ic-p', 'users') + stat('Total Pendapatan', rp(t.pendapatan || 0), 'gaji + tunjangan + lembur + bonus', 'ic-b', 'db') + stat('Total THP', rp(t.thp), '', 'ic-ok', 'card') + stat('Total Potongan', rp(t.potongan), '', 'ic-b', 'alert') + stat('Total Lembur', rp(t.lembur), '', 'ic-i', 'trend') + '</div><div class="toolbar">' + acts + '</div><div id="pyt"></div>' : '<div class="card flat">' + X.empty('card', 'Mulai dengan menghitung payroll', 'Pilih periode dan perusahaan lalu tekan “Hitung Payroll”. Hasil hanya pratinjau sampai Anda menyimpannya sebagai draft.') + '</div>') + '</div>';
   }
   function payTable() {
     var box = $('#pyt'); if (!box || !P.data) return;
@@ -194,16 +196,86 @@
       actions: function (r) { return r.status === 'PDF_SIAP' || r.status === 'TERKIRIM' || r.status === 'GAGAL' ? '<button class="ibtn sm" data-act="py-view" data-id="' + esc(r.id_payroll) + '" aria-label="Lihat slip PDF">' + ico('eye', 'sm') + '</button>' : ''; },
       cols: [{ k: 'nama', label: 'Karyawan', render: function (r) { return '<b>' + esc(r.nama) + '</b><div class="mono muted" style="font-size:11px">' + esc(r.id_karyawan) + ' · ' + esc(compName(r.id_perusahaan)) + '</div>'; } }, { k: 'total_hari_hadir', label: 'Hadir', num: true }, { k: 'frekuensi_telat', label: 'Telat (hari)', num: true, render: function (r) { return r.frekuensi_telat ? '<span class="badge b-warn">' + r.frekuensi_telat + '</span>' : '0'; } },
         { k: 'gaji_pokok', label: 'Pendapatan Tetap', num: true, render: function (r) { return rp(r.gaji_pokok + r.tunjangan_tetap); } }, { k: 'total_uang_lembur', label: 'Lembur', num: true, render: function (r) { return rp(r.total_uang_lembur); } }, { k: 'total_bonus', label: 'Bonus', num: true, render: function (r) { return rp(r.total_bonus); } },
+        { k: 'total_pendapatan', label: 'Total Pendapatan', num: true, render: function (r) { return rp(r.total_pendapatan !== undefined ? r.total_pendapatan : r.gaji_pokok + r.tunjangan_tetap + r.total_uang_lembur + r.total_bonus); } },
         { k: 'total_potongan_telat', label: 'Potongan', num: true, render: function (r) { return '<span style="color:var(--bad)">-' + rp(r.total_potongan_telat + r.total_potongan_kasbon) + '</span>'; } }, { k: 'take_home_pay', label: 'THP', num: true, render: function (r) { return '<b>' + rp(r.take_home_pay) + '</b>'; } },
         { k: 'status', label: 'Status', render: function (r) { var m = STAT[r.status] || STAT.BELUM; return '<span class="badge ' + m[1] + '">' + m[0] + '</span>' + (r.berubah ? ' <span class="badge b-warn" title="Angka berubah sejak disimpan">Berubah</span>' : ''); } }],
       mobileCard: function (r) { var m = STAT[r.status] || STAT.BELUM; return '<div class="li"><div class="grow"><div class="t1">' + esc(r.nama) + '</div><div class="t2">' + r.total_hari_hadir + ' hari · telat ' + (r.frekuensi_telat || 0) + ' hari · <span class="badge ' + m[1] + '">' + m[0] + '</span>' + (r.berubah ? ' <span class="badge b-warn">Berubah</span>' : '') + '</div></div><div class="tr"><b class="mono">' + rp(r.take_home_pay) + '</b>' + (r.status === 'PDF_SIAP' || r.status === 'TERKIRIM' || r.status === 'GAGAL' ? '<div><button class="ibtn sm" data-act="py-view" data-id="' + esc(r.id_payroll) + '" aria-label="Lihat slip">' + ico('eye', 'sm') + '</button></div>' : '') + '</div></div>'; } });
   }
+
+  /* ---------------------------------------------------------------- REKAP GAJI BULANAN (Excel): per perusahaan -> per cabang */
+  var XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  function loadXlsx() {
+    return new Promise(function (resolve, reject) {
+      if (window.XLSX) return resolve(window.XLSX);
+      var s = document.createElement('script'); s.src = XLSX_URL; s.onload = function () { window.XLSX ? resolve(window.XLSX) : reject(new Error('XLSX')); }; s.onerror = function () { reject(new Error('Gagal memuat pustaka Excel. Periksa koneksi internet.')); };
+      document.head.appendChild(s);
+    });
+  }
+  function kompKey(n) { return String(n || '').replace(/\s*\(.*$/, '').trim() || 'Lainnya'; }
+  function sheetName(n, used) { var b = String(n).replace(/[\\\/\?\*\[\]:]/g, ' ').slice(0, 28).trim() || 'Sheet', x = b, i = 2; while (used[x.toLowerCase()]) x = b.slice(0, 26) + ' ' + (i++); used[x.toLowerCase()] = 1; return x; }
+  function buildRekapGaji(XL, periode, rows) {
+    var pendKeys = [], potKeys = [];
+    rows.forEach(function (r) { var ri = {}; try { ri = JSON.parse(r.rincian_json || '{}'); } catch (e) { ri = {}; } r._ri = ri;
+      (ri.pend || []).forEach(function (x) { var k = kompKey(x.n); if (pendKeys.indexOf(k) < 0) pendKeys.push(k); });
+      (ri.pot || []).forEach(function (x) { var k = kompKey(x.n); if (potKeys.indexOf(k) < 0) potKeys.push(k); }); });
+    var hdr = ['No', 'NIK', 'Nama', 'Jabatan', 'Hadir (hari)', 'Gaji Pokok'].concat(pendKeys, ['Lembur (jam)', 'Upah Lembur', 'Bonus', 'Total Pendapatan'], potKeys, ['Total Potongan', 'Take Home Pay']);
+    var NUM0 = 5;                                   // kolom angka dimulai dari "Gaji Pokok"
+    function line(r, no) {
+      var ri = r._ri, pend = {}, pot = {}; (ri.pend || []).forEach(function (x) { pend[kompKey(x.n)] = (pend[kompKey(x.n)] || 0) + x.v; }); (ri.pot || []).forEach(function (x) { pot[kompKey(x.n)] = (pot[kompKey(x.n)] || 0) + x.v; });
+      var gross = r.total_pendapatan !== undefined ? r.total_pendapatan : r.gaji_pokok + r.tunjangan_tetap + r.total_uang_lembur + r.total_bonus, pt = r.total_potongan_telat + r.total_potongan_kasbon;
+      return [no, r.nik || '', r.nama, r.jabatan || '', r.total_hari_hadir, r.gaji_pokok].concat(pendKeys.map(function (k) { return pend[k] || 0; }), [r.total_jam_lembur || 0, r.total_uang_lembur, r.total_bonus, gross], potKeys.map(function (k) { return pot[k] || 0; }), [pt, r.take_home_pay]);
+    }
+    function sumRows(list) { var t = []; for (var c = 0; c < hdr.length; c++) t.push(c < 4 ? '' : 0); list.forEach(function (l) { for (var c = 4; c < hdr.length; c++) t[c] += Number(l[c]) || 0; }); return t; }
+    function sheet(aoa, merges, widths) { var ws = XL.utils.aoa_to_sheet(aoa); ws['!cols'] = widths.map(function (w) { return { wch: w }; }); if (merges) ws['!merges'] = merges;
+      var jam = hdr.indexOf('Lembur (jam)'); Object.keys(ws).forEach(function (a) { var c = XL.utils.decode_cell(a).c; if (a[0] !== '!' && typeof ws[a].v === 'number' && c >= NUM0 && c !== jam) ws[a].z = '#,##0'; }); return ws; }
+    var wb = XL.utils.book_new(), used = {}, byComp = {}, compOrder = [];
+    rows.forEach(function (r) { if (!byComp[r.id_perusahaan]) { byComp[r.id_perusahaan] = {}; compOrder.push(r.id_perusahaan); } (byComp[r.id_perusahaan][r.id_cabang] = byComp[r.id_perusahaan][r.id_cabang] || []).push(r); });
+    var title = 'REKAP GAJI ' + X.periodeLabel(periode).toUpperCase();
+    // ---- ringkasan
+    var sum = [[title], ['Dirinci per perusahaan dan cabang'], [], ['Perusahaan', 'Cabang', 'Karyawan', 'Total Pendapatan', 'Total Potongan', 'Take Home Pay']], grand = [0, 0, 0, 0];
+    compOrder.forEach(function (cid) {
+      var ct = [0, 0, 0, 0]; Object.keys(byComp[cid]).forEach(function (cab) {
+        var lst = byComp[cid][cab], lines = lst.map(function (r) { return line(r, 0); }), t = sumRows(lines), iG = hdr.indexOf('Total Pendapatan'), iP = hdr.indexOf('Total Potongan'), iT = hdr.indexOf('Take Home Pay'), v = [lst.length, t[iG], t[iP], t[iT]];
+        sum.push([compName(cid), cabNm(cab), v[0], v[1], v[2], v[3]]); for (var i = 0; i < 4; i++) ct[i] += v[i];
+      });
+      sum.push(['Subtotal ' + compName(cid), '', ct[0], ct[1], ct[2], ct[3]]); for (var j = 0; j < 4; j++) grand[j] += ct[j];
+    });
+    sum.push([]); sum.push(['TOTAL KESELURUHAN', '', grand[0], grand[1], grand[2], grand[3]]);
+    var wsS = XL.utils.aoa_to_sheet(sum); wsS['!cols'] = [{ wch: 34 }, { wch: 24 }, { wch: 11 }, { wch: 20 }, { wch: 18 }, { wch: 20 }];
+    Object.keys(wsS).forEach(function (a) { if (a[0] !== '!' && typeof wsS[a].v === 'number' && XL.utils.decode_cell(a).c >= 3) wsS[a].z = '#,##0'; });
+    XL.utils.book_append_sheet(wb, wsS, sheetName('Ringkasan', used));
+    // ---- satu sheet per perusahaan, dibagi per cabang
+    compOrder.forEach(function (cid) {
+      var aoa = [[title + ' — ' + compName(cid)], []], cab = byComp[cid], ctot = [];
+      Object.keys(cab).forEach(function (cb) {
+        aoa.push(['CABANG: ' + cabNm(cb)]); aoa.push(hdr);
+        var lines = cab[cb].map(function (r, i) { return line(r, i + 1); }); lines.forEach(function (l) { aoa.push(l); });
+        var t = sumRows(lines); t[2] = 'Subtotal ' + cabNm(cb); aoa.push(t); aoa.push([]); ctot = ctot.concat(lines);
+      });
+      var tt = sumRows(ctot); tt[2] = 'TOTAL ' + compName(cid).toUpperCase(); aoa.push(tt);
+      XL.utils.book_append_sheet(wb, sheet(aoa, null, [5, 14, 26, 18, 11, 14].concat(pendKeys.map(function () { return 16; }), [12, 14, 14, 16], potKeys.map(function () { return 16; }), [16, 16])), sheetName(compName(cid), used));
+    });
+    return wb;
+  }
+  X.ACT['py-xlsx'] = function (b) {
+    var p = P.p; b.disabled = true; var old = b.innerHTML; b.innerHTML = '<span class="spin"></span>Menyiapkan…';
+    var done = function () { b.disabled = false; b.innerHTML = old; };
+    Promise.all([loadXlsx(), X.api('payroll.preview', { periode: p, id_perusahaan: '', id_cabang: '' })]).then(function (res) {
+      var XL = res[0], r = res[1]; if (!r.success) { X.toast(r.message, 'err'); return; }
+      if (!r.data.rows.length) { X.toast('Tidak ada data payroll pada ' + X.periodeLabel(p) + '.', 'warn'); return; }
+      var wb = buildRekapGaji(XL, p, r.data.rows), b64 = XL.write(wb, { bookType: 'xlsx', type: 'base64' });
+      X.saveB64('Rekap_Gaji_' + p + '.xlsx', b64, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); X.toast('Rekap gaji ' + X.periodeLabel(p) + ' diunduh.');
+    }).catch(function (e) { X.toast(e.message || 'Gagal membuat rekap gaji.', 'err'); }).then(done);
+  };
   function repaintPay() { if (S.route !== 'payroll') return; P.el.innerHTML = payShell(); bindPay(); payTable(); }
-  function bindPay() { var s = $('#pyc', P.el); if (s) s.onchange = function () { P.comp = s.value; P.data = null; repaintPay(); }; }
+  function bindPay() {
+    var s = $('#pyc', P.el); if (s) s.onchange = function () { P.comp = s.value; P.cab = ''; P.data = null; repaintPay(); };
+    var cb = $('#pycab', P.el); if (cb) cb.onchange = function () { P.cab = cb.value; P.data = null; repaintPay(); };
+  }
   function calc(quiet) {
-    var p = P.p, c = P.comp, b = $('#pycalc'); if (b && !quiet) { b.disabled = true; b.innerHTML = '<span class="spin"></span>Menghitung…'; }
-    return X.api('payroll.preview', { periode: p, id_perusahaan: c }, { quiet: quiet }).then(function (r) {
-      if (P.p !== p || P.comp !== c) return;
+    var p = P.p, c = P.comp, cb = P.cab, b = $('#pycalc'); if (b && !quiet) { b.disabled = true; b.innerHTML = '<span class="spin"></span>Menghitung…'; }
+    return X.api('payroll.preview', { periode: p, id_perusahaan: c, id_cabang: cb }, { quiet: quiet }).then(function (r) {
+      if (P.p !== p || P.comp !== c || P.cab !== cb) return;
       if (!r.success) { X.toast(r.message, 'err'); repaintPay(); return; }
       P.data = r.data; repaintPay(); if (!quiet) X.toast('Payroll ' + X.periodeLabel(p) + ' dihitung (' + r.data.total.karyawan + ' karyawan).');
     });
@@ -215,7 +287,7 @@
   X.ACT['py-save'] = function (b) {
     X.confirm({ title: 'Simpan sebagai DRAFT?', html: 'Hasil hitung <b>' + X.periodeLabel(P.p) + '</b> untuk ' + P.data.rows.length + ' karyawan akan disimpan. Jika angka berubah dari draft sebelumnya, PDF lama dibuang.', ok: 'Simpan Draft' }).then(function (ok) {
       if (!ok) return; b.disabled = true; b.innerHTML = '<span class="spin"></span>Menyimpan…';
-      X.api('payroll.save', { periode: P.p, id_perusahaan: P.comp }).then(function (r) { if (!r.success) { X.toast(r.message, 'err'); repaintPay(); return; } X.toast(r.message); X.invalidate('fhome'); calc(true); });
+      X.api('payroll.save', { periode: P.p, id_perusahaan: P.comp, id_cabang: P.cab }).then(function (r) { if (!r.success) { X.toast(r.message, 'err'); repaintPay(); return; } X.toast(r.message); X.invalidate('fhome'); calc(true); });
     });
   };
   /** Jalankan aksi server dalam potongan kecil dengan progress bar (aman dari batas 6 menit). */
@@ -281,11 +353,11 @@
         (isG ? '<button class="btn btn-g" data-act="g-keluar" data-k="' + k + '">' + ico('clock', 'sm') + 'Input Kali Keluar</button>' : '') +
         (S.boot.me.role === 'MANAJEMEN' ? '<button class="btn btn-g" data-act="g-komp" data-k="' + k + '">' + ico('sliders', 'sm') + 'Kelola Komponen</button>' : '') +
         '<button class="btn btn-p" id="gsave_' + k + '" data-act="g-save" data-k="' + k + '" ' + (n ? '' : 'disabled') + '>' + ico('check', 'sm') + 'Simpan' + (n ? ' (' + n + ')' : '') + '</button></div>' +
-        '<p class="help" style="margin-bottom:10px">' + (isG ? 'Ubah nominal langsung di tabel, lalu tekan Simpan. Gaji pokok menjadi dasar upah lembur (÷ 173 × pengali). Rate Lembur/Jam: angka abu-abu miring = otomatis (gaji pokok ÷ 173 × pengali). Ketik angka lain bila lembur dibayar flat per jam (mis. 10.000); kosongkan untuk kembali ke otomatis. Anak magang: pilih Tipe <b>Harian</b> lalu isi Tarif Harian — gaji = tarif × jumlah hari hadir (lembur dihitung dari tarif × 26 hari). Komponen berlabel kecil (mis. <i>per hari hadir</i>) diisi tarif per satuan — total dihitung otomatis dari absensi saat payroll.' : 'Potongan rutin per karyawan (mis. cicilan, BPJS, simpanan). Nilai 0 = tidak ada potongan. Komponen berbasis absen (mis. denda telat per menit) diisi tarif per satuannya; totalnya dihitung otomatis dari data absensi.') + '</p>';
+        '<p class="help" style="margin-bottom:10px">' + (isG ? 'Ubah nominal langsung di tabel, lalu tekan Simpan. Gaji pokok menjadi dasar upah lembur (÷ 173 × pengali). Rate Lembur/Jam: angka abu-abu miring = otomatis (bulanan: gaji pokok ÷ 173; harian: tarif harian ÷ jam kerja sehari; × pengali). Ketik angka lain bila lembur dibayar flat per jam (mis. 10.000); kosongkan untuk kembali ke otomatis. Anak magang: pilih Tipe <b>Harian</b> lalu isi Tarif Harian — gaji = tarif × jumlah hari hadir (lembur dihitung dari tarif × 26 hari). Komponen berlabel kecil (mis. <i>per hari hadir</i>) diisi tarif per satuan — total dihitung otomatis dari absensi saat payroll.' : 'Potongan rutin per karyawan (mis. cicilan, BPJS, simpanan). Nilai 0 = tidak ada potongan. Komponen berbasis absen (mis. denda telat per menit) diisi tarif per satuannya; totalnya dihitung otomatis dari data absensi.') + '</p>';
     }
     /* Rate lembur/jam: tampil otomatis (gaji pokok ÷ 173 × pengali) bila belum diisi manual; bisa ditimpa. */
     function eff(s, r, f) { var d = s.dirty[r.id_karyawan]; return d && d[f] !== undefined ? d[f] : r[f]; }
-    function autoRate(s, r) { var harian = eff(s, r, 'tipe_gaji') === 'HARIAN', dasar = harian ? (Number(eff(s, r, 'tarif_harian')) || 0) * 26 : (Number(eff(s, r, 'gaji_pokok')) || 0); return Math.round(dasar / 173 * (r.lembur_pengali || 1)); }
+    function autoRate(s, r) { var harian = eff(s, r, 'tipe_gaji') === 'HARIAN'; if (harian) return Math.round((Number(eff(s, r, 'tarif_harian')) || 0) / (r.jam_kerja_jam || 8) * (r.lembur_pengali || 1)); return Math.round((Number(eff(s, r, 'gaji_pokok')) || 0) / 173 * (r.lembur_pengali || 1)); }
     function lemburCell(r) {
       var s = st.gaji, dv = s.dirty[r.id_karyawan] && s.dirty[r.id_karyawan].tarif_lembur_jam, manual = dv !== undefined ? Number(dv) : Number(r.tarif_lembur_jam) || 0, auto = autoRate(s, r), isAuto = !manual;
       return '<td class="num"><input class="inp gi' + (dv !== undefined ? ' dirty' : '') + (isAuto ? ' auto' : '') + '" style="min-height:34px;padding:5px 8px;width:110px;text-align:right;font-family:var(--mono)' + (isAuto ? ';font-style:italic;color:var(--muted)' : '') + '" type="number" min="0" step="500" inputmode="numeric" data-rp="1" data-i="' + esc(r.id_karyawan) + '" data-f="tarif_lembur_jam" data-lauto="' + (isAuto ? 1 : 0) + '" value="' + (manual || auto || '') + '" placeholder="' + (auto || 0) + '" aria-label="Rate lembur per jam" title="' + (isAuto ? 'Otomatis dari gaji pokok. Ketik angka lain untuk mengisi manual (flat).' : 'Manual (flat). Kosongkan untuk kembali ke otomatis.') + '"></td>';

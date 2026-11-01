@@ -11,7 +11,7 @@
   });
 
   /* ---------------------------------------------------------------- ABSEN */
-  var A = { shiftId: '', shiftDate: '', busy: false, mount: null };
+  var A = { shiftId: '', shiftDate: '', busy: false, mount: null, izin: null };
   function sched() { return S.boot.schedule; }
   function curShift() {
     var sc = sched(), list = sc.pakaiShift ? sc.shifts : [sc.reguler], rec = activeRec();
@@ -49,29 +49,33 @@
     var shiftUi = sc.pakaiShift ? '<div class="field" style="margin:0 0 12px"><label for="shsel">Pilih Shift Hari Ini</label><select class="sel" id="shsel" ' + (rec ? 'disabled' : '') + '>' + (sh ? '' : '<option value="" selected>— Pilih shift dulu —</option>') + sc.shifts.map(function (s) { return '<option value="' + esc(s.id_shift) + '"' + (sh && s.id_shift === sh.id_shift ? ' selected' : '') + '>' + esc(s.nama) + ' · ' + esc(s.jam_masuk) + '–' + esc(s.jam_pulang) + '</option>'; }).join('') + '</select></div>' : '';
     var rule = '<div class="sline"><span class="muted">Jam kerja</span><b class="mono">' + (sh ? esc(sh.jam_masuk) + ' – ' + esc(sh.jam_pulang) + (sh.lintas ? ' (+1)' : '') : '-') + '</b></div><div class="sline"><span class="muted">Toleransi</span><b class="mono">' + sc.toleransi + ' menit</b></div>';
     var pend = rec && rec.pending ? ' <span class="pending-dot" title="Menyimpan…"></span>' : '';
-    var btn;
-    if (!rec) btn = '<button class="btn btn-p btn-xl btn-block hero-btn" data-act="punch" data-kind="IN">' + ico('camera') + 'ABSEN MASUK (SELFIE)</button>';
+    var btn, iz = A.izin && A.izin.tanggal === n.date && !rec ? A.izin : null, izBox = '';
+    if (iz) izBox = '<div class="banner ' + (iz.status === 'DISETUJUI' ? 'info' : 'warn') + '">' + ico('info') + '<div><b>' + (iz.jenis === 'SAKIT' ? 'Sakit' : 'Izin') + ' hari ini · ' + (iz.status === 'DISETUJUI' ? 'disetujui' + (iz.dihitung ? ' (dihitung hadir)' : ' (tidak dihitung)') : 'menunggu persetujuan HR') + '</b>Anda tidak perlu absen.' + (iz.status === 'MENUNGGU' ? ' <a href="#" data-act="izin-batal" data-id="' + esc(iz.id) + '" style="color:var(--primary);font-weight:600">Batalkan pengajuan</a>' : '') + '</div></div>';
+    var izBtn = !rec && !iz ? '<button class="btn btn-g btn-block" data-act="izin-form">' + ico('edit') + 'Tidak hadir? Ajukan Izin / Sakit</button>' : '';
+    if (iz) btn = '<button class="btn btn-g btn-xl btn-block" disabled>' + ico('check') + (iz.jenis === 'SAKIT' ? 'Sakit' : 'Izin') + ' hari ini</button>';
+    else if (!rec) btn = '<button class="btn btn-p btn-xl btn-block hero-btn" data-act="punch" data-kind="IN">' + ico('camera') + 'ABSEN MASUK (SELFIE)</button>';
     else if (!rec.waktu_pulang) btn = '<button class="btn btn-xl btn-block hero-btn" style="background:var(--dark);color:#fff" data-act="punch" data-kind="OUT" ' + (rec.pending ? 'disabled' : '') + '>' + ico('camera') + 'ABSEN PULANG (SELFIE)</button>';
     else btn = '<button class="btn btn-g btn-xl btn-block" disabled>' + ico('check') + 'Absensi Selesai</button>';
     return '<div class="page narrow" style="display:flex;flex-direction:column;gap:14px">' +
       '<div class="card"><div class="prof"><span class="av lg">' + esc(X.initials(me.nama)) + '</span><div style="min-width:0"><h2 style="font-size:18px;overflow:hidden;text-overflow:ellipsis">' + esc(me.nama) + '</h2><div class="mono muted" style="font-size:12px">' + esc(me.id) + '</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><span class="badge b-co">' + esc(sc.perusahaan) + '</span><span class="badge b-n">' + ico('pin', 'sm') + esc(sc.cabang) + '</span></div></div></div></div>' +
       '<div class="card clock"><div style="display:flex;justify-content:space-between;align-items:center"><span class="sm">Waktu Server</span><span class="pill-w">' + ico('clock', 'sm') + esc(sc.zona) + '</span></div><div class="big" data-clock="time">' + n.time + '</div><div class="sm" data-clock="date">' + X.dateLabel(n.date, true) + '</div></div>' +
-      '<div class="card">' + shiftUi + rule + '</div>' +
-      '<div id="bnr">' + banner(rec, sh, n) + '</div>' +
+      (iz ? izBox : '<div class="card">' + shiftUi + rule + '</div>' + '<div id="bnr">' + banner(rec, sh, n) + '</div>') +
       '<div class="grid g2 keep"><div class="card punch"><span class="lbl">MASUK' + pend + '</span><span class="v">' + (rec ? X.hm(rec.waktu_masuk) : '--:--') + '</span><span class="help">' + (rec ? (rec.menit_terlambat ? 'Terlambat ' + rec.menit_terlambat + ' mnt' : 'Tepat waktu') : 'Belum absen') + '</span></div>' +
       '<div class="card punch"><span class="lbl">PULANG</span><span class="v">' + (rec && rec.waktu_pulang ? X.hm(rec.waktu_pulang) : '--:--') + '</span><span class="help">' + (rec && rec.menit_lembur ? 'Lembur ' + rec.menit_lembur + ' mnt' + (rec.status_lembur === 'PENDING' ? ' · menunggu persetujuan' : rec.status_lembur === 'DITOLAK' ? ' · tidak dihitung' : '') : rec && rec.waktu_pulang ? 'Selesai' : 'Belum absen') + '</span></div></div>' +
-      btn + '<p class="help tc" style="display:flex;gap:6px;justify-content:center;align-items:center">' + ico('bell', 'sm') + (S.boot.app.wa ? 'Pengingat absensi dikirim via WhatsApp ke nomor Anda.' : 'Pastikan absen tepat waktu setiap hari.') + '</p></div>';
+      btn + izBtn + '<p class="help tc" style="display:flex;gap:6px;justify-content:center;align-items:center">' + ico('bell', 'sm') + (S.boot.app.wa ? 'Pengingat absensi dikirim via WhatsApp ke nomor Anda.' : 'Pastikan absen tepat waktu setiap hari.') + '</p></div>';
   }
   V.absen = {
     render: function (el) {
       A.mount = el; var td = X.nowIn(S.tz).date; if (A.shiftDate !== td) { A.shiftDate = td; A.shiftId = ''; } el.innerHTML = absenHtml(); bindAbsen(el);
       X.api('absen.state', {}, { quiet: true, dedupe: true }).then(function (r) {                  // sinkron di latar
         if (!r.success || A.busy || S.route !== 'absen') return;
+        var izChg = JSON.stringify(r.data.izin) !== JSON.stringify(A.izin); A.izin = r.data.izin || null;
+        if (izChg) { el.innerHTML = absenHtml(); bindAbsen(el); }
         if (JSON.stringify(r.data.today) !== JSON.stringify(S.boot.today)) { S.boot.today = r.data.today; X.LS.set('boot', S.boot); el.innerHTML = absenHtml(); bindAbsen(el); }
       });
     },
     onBoot: function () { if (!A.busy && S.route === 'absen') { A.mount.innerHTML = absenHtml(); bindAbsen(A.mount); } },
-    tick: function (n) { var b = $('#bnr'); if (b && !activeRec() && curShift()) b.innerHTML = banner(null, curShift(), n); }
+    tick: function (n) { var b = $('#bnr'); if (b && !A.izin && !activeRec() && curShift()) b.innerHTML = banner(null, curShift(), n); }
   };
   function bindAbsen(el) { var s = $('#shsel', el); if (s) s.onchange = function () { A.shiftId = s.value; el.innerHTML = absenHtml(); bindAbsen(el); }; }
 
@@ -96,6 +100,37 @@
     if (kind === 'OUT') { var mnt = lemburSekarang(activeRec()); if (mnt > 0) return askAlasan(mnt).then(function (v) { if (v) { ALASAN = v; openCam('OUT'); } }); }
     openCam(kind);
   };
+
+  /* ---------------------------------------------------------------- IZIN / SAKIT */
+  function refreshAbsen() { return X.api('absen.state', {}, { quiet: true }).then(function (r) { if (r.success) { A.izin = r.data.izin || null; S.boot.today = r.data.today; } if (S.route === 'absen' && A.mount) { A.mount.innerHTML = absenHtml(); bindAbsen(A.mount); } }); }
+  X.ACT['izin-form'] = function () {
+    var td = X.nowIn(S.tz).date;
+    var m = X.modal({ title: 'Ajukan Izin / Sakit', body: '<p class="muted" style="margin-bottom:10px">Pilih ini bila Anda tidak masuk kerja. HR akan menyetujui dan menentukan apakah hari tersebut dihitung atau tidak.</p>' +
+      X.field({ name: 'jenis', type: 'select', label: 'Jenis', options: [{ v: 'IZIN', l: 'Izin' }, { v: 'SAKIT', l: 'Sakit' }] }) +
+      '<div class="grid g2 keep">' + X.field({ name: 'tanggal_mulai', type: 'date', label: 'Dari tanggal', value: td, required: true }) + X.field({ name: 'tanggal_selesai', type: 'date', label: 'Sampai tanggal', value: td, required: true }) + '</div>' +
+      X.field({ name: 'keterangan', type: 'textarea', label: 'Keterangan', required: true, placeholder: 'mis. demam, keperluan keluarga' }),
+      footer: '<button class="btn btn-g" data-close>Batal</button><button class="btn btn-p" id="izsv">Kirim Pengajuan</button>',
+      onOpen: function (mm) {
+        var a = mm.$('[name=tanggal_mulai]'), b = mm.$('[name=tanggal_selesai]'); a.onchange = function () { if (b.value < a.value) b.value = a.value; };
+        mm.$('#izsv').onclick = function () {
+          var d = X.readForm(mm.el); if (!d.tanggal_mulai || !d.tanggal_selesai) return X.toast('Isi tanggal.', 'warn'); if (d.keterangan.trim().length < 3) return X.toast('Isi keterangan singkat.', 'warn');
+          var btn = mm.$('#izsv'); btn.disabled = true;
+          X.api('izin.ajukan', d).then(function (r) { btn.disabled = false; if (!r.success) return; mm.close(); X.toast(r.message || 'Pengajuan terkirim.', 'ok'); refreshAbsen(); });
+        };
+      } });
+  };
+  X.ACT['izin-batal'] = function (b) {
+    X.api('izin.batal', { id: b.dataset.id }).then(function (r) { if (r.success) { X.toast('Pengajuan dibatalkan.', 'ok'); refreshAbsen(); if (S.route === 'riwayat') paintRiwayat(R.el); } });
+  };
+  var IZST = { MENUNGGU: ['Menunggu', 'b-warn'], DISETUJUI: ['Disetujui', 'b-ok'], DITOLAK: ['Ditolak', 'b-bad'] };
+  function izinListHtml(rows) {
+    if (!rows || !rows.length) return '';
+    return '<h3 style="font-size:14px;margin:18px 0 8px">Izin & Sakit</h3><div class="list">' + rows.map(function (z) {
+      var st = IZST[z.status] || ['', ''];
+      return '<div class="li"><div class="av" style="flex-direction:column;line-height:1;font-size:15px"><span>' + z.tanggal.slice(8) + '</span></div><div class="grow"><div class="t1">' + (z.jenis === 'SAKIT' ? 'Sakit' : 'Izin') + (z.status === 'DISETUJUI' ? (z.dihitung ? ' · dihitung hadir' : ' · tidak dihitung') : '') + '</div><div class="t2">' + esc(z.keterangan || '') + (z.status === 'DITOLAK' && z.catatan ? ' — ' + esc(z.catatan) : '') + '</div></div><div class="tr"><span class="badge ' + st[1] + '">' + st[0] + '</span>' +
+        (z.status === 'MENUNGGU' ? ' <button class="btn btn-g btn-s" data-act="izin-batal" data-id="' + esc(z.id) + '">Batal</button>' : '') + '</div></div>';
+    }).join('') + '</div>';
+  }
 
   /* ---------------------------------------------------------------- KAMERA */
   var C = { stream: null, kind: '', photo: '', timer: 0 };
@@ -183,8 +218,8 @@
       var dt = X.dateLabel(r.tanggal).split(', ');
       return '<div class="li click" data-act="rw-open" data-id="' + esc(r.id) + '" role="button" tabindex="0"><div class="av" style="flex-direction:column;line-height:1;font-size:15px"><span>' + r.tanggal.slice(8) + '</span><span style="font-size:9px;font-weight:600">' + dt[0] + '</span></div><div class="grow"><div class="t1 mono" style="font-size:13px">' + X.hm(r.waktu_masuk) + ' → ' + (r.waktu_pulang ? X.hm(r.waktu_pulang) : '--:--') + '</div><div class="t2">' + (r.menit_lembur ? 'Lembur ' + r.menit_lembur + ' mnt' + (r.status_lembur && r.status_lembur !== 'DISETUJUI' ? ' · ' + LST[r.status_lembur][0].toLowerCase() : '') : r.waktu_pulang ? 'Selesai' : 'Belum pulang') + '</div></div>' +
         (r.menit_terlambat ? '<div class="tr"><span class="badge b-warn">Telat ' + r.menit_terlambat + 'm</span></div>' : '<span class="badge b-ok">Tepat</span>') + '</div>';
-    }).join('') + '</div>' : '<div class="card flat">' + X.empty('calendar', 'Belum ada absensi', 'Tidak ada data absensi pada ' + X.periodeLabel(p) + '.') + '</div>';
-    return '<div class="page narrow">' + head + sum + list + '</div>';
+    }).join('') + '</div>' : (d.izin && d.izin.length ? '' : '<div class="card flat">' + X.empty('calendar', 'Belum ada absensi', 'Tidak ada data absensi pada ' + X.periodeLabel(p) + '.') + '</div>');
+    return '<div class="page narrow">' + head + sum + list + izinListHtml(d.izin) + '</div>';
   }
   function st(k, v, ic, i) { return '<div class="card stat"><span class="k"><span class="ic ' + ic + '">' + ico(i, 'sm') + '</span></span><span class="s">' + k + '</span><span class="v" style="font-size:18px;line-height:24px">' + v + '</span></div>'; }
   function paintRiwayat(el) {
