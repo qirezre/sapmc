@@ -56,7 +56,7 @@
     else if (!rec) btn = '<button class="btn btn-p btn-xl btn-block hero-btn" data-act="punch" data-kind="IN">' + ico('camera') + 'ABSEN MASUK (SELFIE)</button>';
     else if (!rec.waktu_pulang) btn = '<button class="btn btn-xl btn-block hero-btn" style="background:var(--dark);color:#fff" data-act="punch" data-kind="OUT" ' + (rec.pending ? 'disabled' : '') + '>' + ico('camera') + 'ABSEN PULANG (SELFIE)</button>';
     else btn = '<button class="btn btn-g btn-xl btn-block" disabled>' + ico('check') + 'Absensi Selesai</button>';
-    return '<div class="page narrow" style="display:flex;flex-direction:column;gap:14px">' +
+    return '<div class="page narrow" style="display:flex;flex-direction:column;gap:14px">' + obBanner() +
       '<div class="card"><div class="prof"><span class="av lg">' + esc(X.initials(me.nama)) + '</span><div style="min-width:0"><h2 style="font-size:18px;overflow:hidden;text-overflow:ellipsis">' + esc(me.nama) + '</h2><div class="mono muted" style="font-size:12px">' + esc(me.id) + '</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><span class="badge b-co">' + esc(sc.perusahaan) + '</span><span class="badge b-n">' + ico('pin', 'sm') + esc(sc.cabang) + '</span></div></div></div></div>' +
       '<div class="card clock"><div style="display:flex;justify-content:space-between;align-items:center"><span class="sm">Waktu Server</span><span class="pill-w">' + ico('clock', 'sm') + esc(sc.zona) + '</span></div><div class="big" data-clock="time">' + n.time + '</div><div class="sm" data-clock="date">' + X.dateLabel(n.date, true) + '</div></div>' +
       (iz ? izBox : '<div class="card">' + shiftUi + rule + '</div>' + '<div id="bnr">' + banner(rec, sh, n) + '</div>') +
@@ -66,7 +66,7 @@
   }
   V.absen = {
     render: function (el) {
-      A.mount = el; var td = X.nowIn(S.tz).date; if (A.shiftDate !== td) { A.shiftDate = td; A.shiftId = ''; } el.innerHTML = absenHtml(); bindAbsen(el);
+      A.mount = el; var td = X.nowIn(S.tz).date; if (A.shiftDate !== td) { A.shiftDate = td; A.shiftId = ''; } el.innerHTML = absenHtml(); bindAbsen(el); X.flushOutbox();
       X.api('absen.state', {}, { quiet: true, dedupe: true }).then(function (r) {                  // sinkron di latar
         if (!r.success || A.busy || S.route !== 'absen') return;
         var izChg = JSON.stringify(r.data.izin) !== JSON.stringify(A.izin); A.izin = r.data.izin || null;
@@ -85,7 +85,8 @@
   function lemburSekarang(rec) {
     if (!rec) return 0; var n = X.nowIn(S.tz), nowAbs = Date.parse(n.date + 'T00:00:00Z') / 60000 + n.min;
     var dur = X.hmMin(rec.jadwal_pulang) - X.hmMin(rec.jadwal_masuk); if (dur <= 0) dur += 1440;
-    return Math.floor(nowAbs - (Date.parse(rec.tanggal + 'T00:00:00Z') / 60000 + X.hmMin(rec.jadwal_masuk) + dur));
+    var gr = sched().lemburMulai; gr = gr === undefined || gr === null ? 30 : gr;
+    return Math.floor(nowAbs - (Date.parse(rec.tanggal + 'T00:00:00Z') / 60000 + X.hmMin(rec.jadwal_masuk) + dur)) - gr;
   }
   function askAlasan(menit) {
     return new Promise(function (resolve) {
@@ -97,6 +98,7 @@
   }
   X.ACT.punch = function (b) {
     var kind = b.dataset.kind; ALASAN = '';
+    if (obGet()) return X.flushOutbox();                                       // ada absen tertunda: kirim itu dulu
     if (kind === 'OUT') { var mnt = lemburSekarang(activeRec()); if (mnt > 0) return askAlasan(mnt).then(function (v) { if (v) { ALASAN = v; openCam('OUT'); } }); }
     openCam(kind);
   };
@@ -187,25 +189,59 @@
   X.askAlasanLembur = askAlasan;
 
   /* ---------------------------------------------------------------- KIRIM ABSEN (optimistic) */
+  /* Antrean kirim: absen disimpan di HP sampai server mengonfirmasi, supaya tidak hilang bila sinyal putus,
+     aplikasi tertutup, atau sesi login habis. Dikirim ulang dengan JAM ASLI saat tombol ditekan (t_klien). */
+  var OBK = 'sapmc:outbox';
+  function obGet() { try { var o = JSON.parse(localStorage.getItem(OBK) || 'null'); return o && S.boot && o.uid === S.boot.me.id ? o : null; } catch (e) { return null; } }
+  function obSet(o) { try { if (o) localStorage.setItem(OBK, JSON.stringify(o)); else localStorage.removeItem(OBK); } catch (e) { /* penyimpanan penuh: lanjut tanpa antrean */ } }
+  function repaintAbsen() { if (S.route === 'absen' && A.mount) { A.mount.innerHTML = absenHtml(); bindAbsen(A.mount); } }
+  function obBanner() {
+    var o = obGet(); if (!o) return '';
+    return '<div class="banner bad">' + ico('alert') + '<div><b>Absen ' + (o.kind === 'IN' ? 'masuk' : 'pulang') + ' pukul ' + esc(o.jam) + ' BELUM terkirim ke server</b>Foto dan jam Anda tersimpan di HP. Pastikan internet aktif lalu tekan <b>Kirim ulang</b>.' +
+      '<div style="margin-top:8px"><button class="btn btn-p btn-s" data-act="ob-retry">Kirim ulang sekarang</button></div></div></div>';
+  }
+  function sendPunch(o) {
+    var prev = S.boot.today;
+    return X.api(o.kind === 'IN' ? 'absen.clockIn' : 'absen.clockOut', { foto: o.photo, id_shift: o.id_shift, alasan_lembur: o.alasan || '', t_klien: o.t }).then(function (r) {
+      A.busy = false;
+      if (r.success) {
+        obSet(null); S.boot.today = r.data.today; S.off = (r.data.serverNow || Date.now()) - Date.now(); X.LS.set('boot', S.boot); X.invalidate('hist:');
+        X.toast(r.message, r.data.today.menit_terlambat && o.kind === 'IN' ? 'warn' : '');
+      } else if (r.code === 'NET' || r.code === 'AUTH') {
+        S.boot.today = prev && prev.pending ? o.prev || null : prev;                 // batalkan tampilan sementara; antrean tetap tersimpan
+        X.toast('Absen belum terkirim — tersimpan di HP. ' + (r.code === 'AUTH' ? 'Masuk kembali, lalu absen otomatis dikirim.' : 'Periksa internet lalu tekan Kirim ulang.'), 'err');
+      } else if (r.code === 'DUP') {
+        obSet(null); X.toast('Absen ini sudah tercatat sebelumnya.'); X.refreshBoot();
+      } else if (r.code === 'ALASAN') {
+        S.boot.today = o.prev || prev; var mm = parseInt((/(\d+) menit/.exec(r.message || '') || [0, 1])[1], 10);
+        askAlasan(isNaN(mm) ? 1 : mm).then(function (v) { if (v) { o.alasan = v; obSet(o); A.busy = true; S.boot.today = Object.assign({}, S.boot.today || {}, { pending: true }); sendPunch(o); } else { obSet(null); repaintAbsen(); } });
+        return;
+      } else {
+        obSet(null); S.boot.today = o.prev || prev;
+        X.modal({ title: 'Absen belum tersimpan', body: '<p class="muted">' + esc(r.message) + '</p>', footer: '<button class="btn btn-p" data-close>Mengerti</button>' });
+        if (r.code === 'NOIN') X.refreshBoot();
+      }
+      repaintAbsen();
+    });
+  }
   function punch(kind, photo) {
     if (A.busy) return; A.busy = true;
     var prev = S.boot.today, n = X.nowIn(S.tz), sh = curShift(), li = lateInfo(sh, n), tmp;
     if (kind === 'IN') tmp = { id: 'tmp', tanggal: n.date, id_shift: sh.id_shift, jadwal_masuk: sh.jam_masuk, jadwal_pulang: sh.jam_pulang, waktu_masuk: n.full, waktu_pulang: '', menit_terlambat: li.counted, denda: li.denda, menit_lembur: 0, nominal_lembur: 0, status: li.counted ? 'TERLAMBAT' : 'HADIR', lintas: sh.lintas, pending: true };
     else tmp = Object.assign({}, prev, { waktu_pulang: n.full, pending: true });
-    S.boot.today = tmp; if (S.route === 'absen') { A.mount.innerHTML = absenHtml(); bindAbsen(A.mount); }
-    X.api(kind === 'IN' ? 'absen.clockIn' : 'absen.clockOut', { foto: photo, id_shift: sh.id_shift, alasan_lembur: ALASAN }).then(function (r) {
-      A.busy = false;
-      if (r.success) {
-        S.boot.today = r.data.today; S.off = (r.data.serverNow || Date.now()) - Date.now(); X.LS.set('boot', S.boot); X.invalidate('hist:'); X.toast(r.message, r.data.today.menit_terlambat && kind === 'IN' ? 'warn' : '');
-      } else {
-        S.boot.today = prev; X.toast(r.message, 'err');
-        if (r.code === 'ALASAN') { var mm = parseInt(/(\d+) menit/.exec(r.message || '') || [0, 1], 10); askAlasan(isNaN(mm) ? 1 : mm).then(function (v) { if (v) { ALASAN = v; punch(kind, photo); } }); }
-        else if (r.code !== 'DUP' && r.code !== 'NOIN') X.modal({ title: 'Absen belum tersimpan', body: '<p class="muted">' + esc(r.message) + '<br><br>Foto Anda masih tersimpan. Coba kirim ulang.</p>', footer: '<button class="btn btn-g" data-close>Nanti</button><button class="btn btn-p" id="retry">Kirim ulang</button>', onOpen: function (m) { m.$('#retry').onclick = function () { m.close(); punch(kind, photo); }; } });
-        else X.refreshBoot();
-      }
-      if (S.route === 'absen') { A.mount.innerHTML = absenHtml(); bindAbsen(A.mount); }
-    });
+    var o = { uid: S.boot.me.id, kind: kind, photo: photo, alasan: ALASAN, id_shift: sh.id_shift, t: Date.now() + S.off, jam: n.time.slice(0, 5), prev: prev };
+    obSet(o); S.boot.today = tmp; repaintAbsen();
+    sendPunch(o);
   }
+  /* kirim ulang antrean: dipanggil dari tombol, saat online lagi, saat aplikasi dibuka, dan setelah login */
+  X.flushOutbox = function () {
+    var o = obGet(); if (!o || A.busy) return;
+    if (Date.now() + S.off - o.t > 12 * 3600e3) { obSet(null); X.modal({ title: 'Absen tertunda terlalu lama', body: '<p class="muted">Absen ' + (o.kind === 'IN' ? 'masuk' : 'pulang') + ' pukul ' + esc(o.jam) + ' tidak bisa dikirim otomatis karena sudah lebih dari 12 jam. Mohon hubungi HR untuk mencatatnya manual.</p>', footer: '<button class="btn btn-p" data-close>Mengerti</button>' }); repaintAbsen(); return; }
+    A.busy = true; S.boot.today = o.kind === 'OUT' ? Object.assign({}, S.boot.today || o.prev || {}, { pending: true }) : S.boot.today; repaintAbsen(); sendPunch(o);
+  };
+  X.ACT['ob-retry'] = function () { X.flushOutbox(); };
+  window.addEventListener('online', function () { if (S.boot) X.flushOutbox(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && S.boot) X.flushOutbox(); });
 
   /* ---------------------------------------------------------------- RIWAYAT */
   var R = { p: '' };

@@ -321,7 +321,7 @@
     LS.setRaw('token', S.token); LS.set('boot', S.boot);
     $('#login').classList.remove('on'); $('#login').innerHTML = ''; $('#app').classList.add('on');
     go(LS.raw('route') && allowed(LS.raw('route')) ? LS.raw('route') : homeRoute());
-    prefetch(); waGate();
+    prefetch(); waGate(); if (window.SAP && SAP.flushOutbox) setTimeout(SAP.flushOutbox, 800);
   }
   /* Wajib isi nomor WhatsApp: dialog tanpa tombol tutup selama no_wa masih kosong */
   var WAG = null;
