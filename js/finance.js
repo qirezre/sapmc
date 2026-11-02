@@ -192,7 +192,7 @@
   function payShell() {
     var d = P.data, t = d && d.total;
     var acts = '<div style="display:flex;gap:8px;flex-wrap:wrap">' + (can('can_generate_payroll') ? '<button class="btn btn-g" data-act="py-save" ' + (d && d.rows.length ? '' : 'disabled') + '>' + ico('db', 'sm') + 'Simpan Draft</button><button class="btn btn-g" data-act="py-pdf" ' + (d && d.rows.some(function (r) { return r.status !== 'BELUM'; }) ? '' : 'disabled') + '>' + ico('file', 'sm') + 'Buat PDF</button>' : '') + (can('can_send_payslip') ? '<button class="btn btn-p" data-act="py-send" ' + (d && d.rows.some(function (r) { return r.status === 'PDF_SIAP' || r.status === 'GAGAL'; }) ? '' : 'disabled') + '>' + ico('send', 'sm') + 'Kirim Email</button>' : '') + '</div>';
-    return '<div class="page">' + stepsHtml() + '<div class="toolbar">' + monthBar(P.p, 'py-prev', 'py-next') + selectComp('pyc', P.comp, true) + cabSelect('pycab', P.comp, P.cab) + '<button class="btn btn-p" data-act="py-calc" id="pycalc">' + ico('refresh', 'sm') + 'Hitung Payroll</button><button class="btn btn-g" data-act="py-xlsx" title="Unduh rekap gaji semua perusahaan dan cabang untuk bulan ini (Excel)">' + ico('download', 'sm') + 'Rekap Gaji (Excel)</button></div>' +
+    return '<div class="page">' + stepsHtml() + '<div class="toolbar">' + monthBar(P.p, 'py-prev', 'py-next') + selectComp('pyc', P.comp, true) + cabSelect('pycab', P.comp, P.cab) + '<button class="btn btn-p" data-act="py-calc" id="pycalc">' + ico('refresh', 'sm') + 'Hitung Payroll</button><button class="btn btn-g" data-act="py-rekap" title="Unduh rekap gaji (PDF) — pilih perusahaan dan cabang">' + ico('download', 'sm') + 'Rekap Gaji (PDF)</button></div>' +
       (d ? '<div class="grid keep" style="margin-bottom:14px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))">' + stat('Karyawan', t.karyawan, X.periodeLabel(P.p) + (P.cab ? ' · ' + cabNm(P.cab) : ''), 'ic-p', 'users') + stat('Total Pendapatan', rp(t.pendapatan || 0), 'gaji + tunjangan + lembur + bonus', 'ic-b', 'db') + stat('Total THP', rp(t.thp), '', 'ic-ok', 'card') + stat('Total Potongan', rp(t.potongan), '', 'ic-b', 'alert') + stat('Total Lembur', rp(t.lembur), '', 'ic-i', 'trend') + '</div><div class="toolbar">' + acts + '</div><div id="pyt"></div>' : '<div class="card flat">' + X.empty('card', 'Mulai dengan menghitung payroll', 'Pilih periode dan perusahaan lalu tekan “Hitung Payroll”. Hasil hanya pratinjau sampai Anda menyimpannya sebagai draft.') + '</div>') + '</div>';
   }
   function payTable() {
@@ -207,70 +207,35 @@
       mobileCard: function (r) { var m = STAT[r.status] || STAT.BELUM; return '<div class="li"><div class="grow"><div class="t1">' + esc(r.nama) + '</div><div class="t2">' + r.total_hari_hadir + ' hari · telat ' + (r.frekuensi_telat || 0) + ' hari · <span class="badge ' + m[1] + '">' + m[0] + '</span>' + (r.berubah ? ' <span class="badge b-warn">Berubah</span>' : '') + '</div></div><div class="tr"><b class="mono">' + rp(r.take_home_pay) + '</b>' + (r.status === 'PDF_SIAP' || r.status === 'TERKIRIM' || r.status === 'GAGAL' ? '<div><button class="ibtn sm" data-act="py-view" data-id="' + esc(r.id_payroll) + '" aria-label="Lihat slip">' + ico('eye', 'sm') + '</button></div>' : '') + '</div></div>'; } });
   }
 
-  /* ---------------------------------------------------------------- REKAP GAJI BULANAN (Excel): per perusahaan -> per cabang */
-  var XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-  function loadXlsx() {
-    return new Promise(function (resolve, reject) {
-      if (window.XLSX) return resolve(window.XLSX);
-      var s = document.createElement('script'); s.src = XLSX_URL; s.onload = function () { window.XLSX ? resolve(window.XLSX) : reject(new Error('XLSX')); }; s.onerror = function () { reject(new Error('Gagal memuat pustaka Excel. Periksa koneksi internet.')); };
-      document.head.appendChild(s);
-    });
-  }
-  function kompKey(n) { return String(n || '').replace(/\s*\(.*$/, '').trim() || 'Lainnya'; }
-  function sheetName(n, used) { var b = String(n).replace(/[\\\/\?\*\[\]:]/g, ' ').slice(0, 28).trim() || 'Sheet', x = b, i = 2; while (used[x.toLowerCase()]) x = b.slice(0, 26) + ' ' + (i++); used[x.toLowerCase()] = 1; return x; }
-  function buildRekapGaji(XL, periode, rows) {
-    var pendKeys = [], potKeys = [];
-    rows.forEach(function (r) { var ri = {}; try { ri = JSON.parse(r.rincian_json || '{}'); } catch (e) { ri = {}; } r._ri = ri;
-      (ri.pend || []).forEach(function (x) { var k = kompKey(x.n); if (pendKeys.indexOf(k) < 0) pendKeys.push(k); });
-      (ri.pot || []).forEach(function (x) { var k = kompKey(x.n); if (potKeys.indexOf(k) < 0) potKeys.push(k); }); });
-    var hdr = ['No', 'NIK', 'Nama', 'Jabatan', 'Hadir (hari)', 'Gaji Pokok'].concat(pendKeys, ['Lembur (jam)', 'Upah Lembur', 'Bonus', 'Total Pendapatan'], potKeys, ['Total Potongan', 'Take Home Pay']);
-    var NUM0 = 5;                                   // kolom angka dimulai dari "Gaji Pokok"
-    function line(r, no) {
-      var ri = r._ri, pend = {}, pot = {}; (ri.pend || []).forEach(function (x) { pend[kompKey(x.n)] = (pend[kompKey(x.n)] || 0) + x.v; }); (ri.pot || []).forEach(function (x) { pot[kompKey(x.n)] = (pot[kompKey(x.n)] || 0) + x.v; });
-      var gross = r.total_pendapatan !== undefined ? r.total_pendapatan : r.gaji_pokok + r.tunjangan_tetap + r.total_uang_lembur + r.total_bonus, pt = r.total_potongan_telat + r.total_potongan_kasbon;
-      return [no, r.nik || '', r.nama, r.jabatan || '', r.total_hari_hadir, r.gaji_pokok].concat(pendKeys.map(function (k) { return pend[k] || 0; }), [r.total_jam_lembur || 0, r.total_uang_lembur, r.total_bonus, gross], potKeys.map(function (k) { return pot[k] || 0; }), [pt, r.take_home_pay]);
-    }
-    function sumRows(list) { var t = []; for (var c = 0; c < hdr.length; c++) t.push(c < 4 ? '' : 0); list.forEach(function (l) { for (var c = 4; c < hdr.length; c++) t[c] += Number(l[c]) || 0; }); return t; }
-    function sheet(aoa, merges, widths) { var ws = XL.utils.aoa_to_sheet(aoa); ws['!cols'] = widths.map(function (w) { return { wch: w }; }); if (merges) ws['!merges'] = merges;
-      var jam = hdr.indexOf('Lembur (jam)'); Object.keys(ws).forEach(function (a) { var c = XL.utils.decode_cell(a).c; if (a[0] !== '!' && typeof ws[a].v === 'number' && c >= NUM0 && c !== jam) ws[a].z = '#,##0'; }); return ws; }
-    var wb = XL.utils.book_new(), used = {}, byComp = {}, compOrder = [];
-    rows.forEach(function (r) { if (!byComp[r.id_perusahaan]) { byComp[r.id_perusahaan] = {}; compOrder.push(r.id_perusahaan); } (byComp[r.id_perusahaan][r.id_cabang] = byComp[r.id_perusahaan][r.id_cabang] || []).push(r); });
-    var title = 'REKAP GAJI ' + X.periodeLabel(periode).toUpperCase();
-    // ---- ringkasan
-    var sum = [[title], ['Dirinci per perusahaan dan cabang'], [], ['Perusahaan', 'Cabang', 'Karyawan', 'Total Pendapatan', 'Total Potongan', 'Take Home Pay']], grand = [0, 0, 0, 0];
-    compOrder.forEach(function (cid) {
-      var ct = [0, 0, 0, 0]; Object.keys(byComp[cid]).forEach(function (cab) {
-        var lst = byComp[cid][cab], lines = lst.map(function (r) { return line(r, 0); }), t = sumRows(lines), iG = hdr.indexOf('Total Pendapatan'), iP = hdr.indexOf('Total Potongan'), iT = hdr.indexOf('Take Home Pay'), v = [lst.length, t[iG], t[iP], t[iT]];
-        sum.push([compName(cid), cabNm(cab), v[0], v[1], v[2], v[3]]); for (var i = 0; i < 4; i++) ct[i] += v[i];
-      });
-      sum.push(['Subtotal ' + compName(cid), '', ct[0], ct[1], ct[2], ct[3]]); for (var j = 0; j < 4; j++) grand[j] += ct[j];
-    });
-    sum.push([]); sum.push(['TOTAL KESELURUHAN', '', grand[0], grand[1], grand[2], grand[3]]);
-    var wsS = XL.utils.aoa_to_sheet(sum); wsS['!cols'] = [{ wch: 34 }, { wch: 24 }, { wch: 11 }, { wch: 20 }, { wch: 18 }, { wch: 20 }];
-    Object.keys(wsS).forEach(function (a) { if (a[0] !== '!' && typeof wsS[a].v === 'number' && XL.utils.decode_cell(a).c >= 3) wsS[a].z = '#,##0'; });
-    XL.utils.book_append_sheet(wb, wsS, sheetName('Ringkasan', used));
-    // ---- satu sheet per perusahaan, dibagi per cabang
-    compOrder.forEach(function (cid) {
-      var aoa = [[title + ' — ' + compName(cid)], []], cab = byComp[cid], ctot = [];
-      Object.keys(cab).forEach(function (cb) {
-        aoa.push(['CABANG: ' + cabNm(cb)]); aoa.push(hdr);
-        var lines = cab[cb].map(function (r, i) { return line(r, i + 1); }); lines.forEach(function (l) { aoa.push(l); });
-        var t = sumRows(lines); t[2] = 'Subtotal ' + cabNm(cb); aoa.push(t); aoa.push([]); ctot = ctot.concat(lines);
-      });
-      var tt = sumRows(ctot); tt[2] = 'TOTAL ' + compName(cid).toUpperCase(); aoa.push(tt);
-      XL.utils.book_append_sheet(wb, sheet(aoa, null, [5, 14, 26, 18, 11, 14].concat(pendKeys.map(function () { return 16; }), [12, 14, 14, 16], potKeys.map(function () { return 16; }), [16, 16])), sheetName(compName(cid), used));
-    });
-    return wb;
-  }
-  X.ACT['py-xlsx'] = function (b) {
-    var p = P.p; b.disabled = true; var old = b.innerHTML; b.innerHTML = '<span class="spin"></span>Menyiapkan…';
-    var done = function () { b.disabled = false; b.innerHTML = old; };
-    Promise.all([loadXlsx(), X.api('payroll.preview', { periode: p, id_perusahaan: '', id_cabang: '' })]).then(function (res) {
-      var XL = res[0], r = res[1]; if (!r.success) { X.toast(r.message, 'err'); return; }
-      if (!r.data.rows.length) { X.toast('Tidak ada data payroll pada ' + X.periodeLabel(p) + '.', 'warn'); return; }
-      var wb = buildRekapGaji(XL, p, r.data.rows), b64 = XL.write(wb, { bookType: 'xlsx', type: 'base64' });
-      X.saveB64('Rekap_Gaji_' + p + '.xlsx', b64, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); X.toast('Rekap gaji ' + X.periodeLabel(p) + ' diunduh.');
-    }).catch(function (e) { X.toast(e.message || 'Gagal membuat rekap gaji.', 'err'); }).then(done);
+  /* ---------------------------------------------------------------- REKAP GAJI BULANAN (PDF): pilih perusahaan & cabang */
+  function compList() { return pick().perusahaan.map(function (c) { return { id: c.id, nama: c.nama, cabang: pick().cabang.filter(function (x) { return x.id_perusahaan === c.id; }) }; }); }
+  X.ACT['py-rekap'] = function () {
+    var p = P.p, cl = compList(); if (!cl.length) return X.toast('Tidak ada perusahaan yang bisa diakses.', 'warn');
+    var body = '<p class="muted" style="margin-bottom:10px">Pilih perusahaan dan cabang yang ingin dimasukkan ke rekap <b>' + esc(X.periodeLabel(p)) + '</b>. Hasilnya satu file PDF, dirinci per perusahaan lalu per cabang.</p>' +
+      '<div style="display:flex;gap:8px;margin-bottom:8px"><button class="btn btn-g btn-s" data-rk="all">Pilih semua</button><button class="btn btn-g btn-s" data-rk="none">Kosongkan</button></div>' +
+      '<div style="max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:6px 12px">' + cl.map(function (c) {
+        return '<div style="padding:6px 0;border-bottom:1px solid var(--line)"><label class="chk"><input type="checkbox" data-rkc="' + esc(c.id) + '" ' + (!P.comp || P.comp === c.id ? 'checked' : '') + '><span><b>' + esc(c.nama) + '</b></span></label>' +
+          '<div style="margin:4px 0 2px 26px;display:flex;flex-wrap:wrap;gap:4px 16px">' + c.cabang.concat([{ id: '', nama: '(Tanpa cabang)' }]).map(function (cb) { return '<label class="chk"><input type="checkbox" data-rkb="' + esc(c.id) + '" data-id="' + esc(cb.id) + '" ' + (!P.comp || P.comp === c.id ? 'checked' : '') + '><span>' + esc(cb.nama) + '</span></label>'; }).join('') + '</div></div>';
+      }).join('') + '</div>' +
+      '<label class="chk" style="margin-top:12px"><input type="checkbox" id="rkrin"><span><b>Sertakan rincian per karyawan</b><br><span class="muted" style="font-size:12px">Menambah halaman rincian pendapatan dan potongan tiap orang (seperti isi slip gaji).</span></span></label>';
+    X.modal({ title: 'Rekap Gaji (PDF)', body: body, footer: '<button class="btn btn-g" data-close>Batal</button><button class="btn btn-p" id="rkgo">' + ico('download', 'sm') + 'Unduh PDF</button>',
+      onOpen: function (m) {
+        var q = function (sel) { return X.$$(sel, m.el); };
+        q('[data-rkc]').forEach(function (c) { c.onchange = function () { q('[data-rkb="' + c.dataset.rkc + '"]').forEach(function (x) { x.checked = c.checked; }); }; });
+        q('[data-rkb]').forEach(function (x) { x.onchange = function () { var any = q('[data-rkb="' + x.dataset.rkb + '"]').some(function (y) { return y.checked; }); q('[data-rkc="' + x.dataset.rkb + '"]')[0].checked = any; }; });
+        q('[data-rk]').forEach(function (b) { b.onclick = function () { var on = b.dataset.rk === 'all'; q('[data-rkc],[data-rkb]').forEach(function (x) { x.checked = on; }); }; });
+        m.$('#rkgo').onclick = function () {
+          var pilih = {}, n = 0;
+          cl.forEach(function (c) { var ids = q('[data-rkb="' + c.id + '"]').filter(function (x) { return x.checked; }).map(function (x) { return x.dataset.id; }); if (!ids.length) return; n++;
+            pilih[c.id] = ids.length === q('[data-rkb="' + c.id + '"]').length ? '*' : ids; });
+          if (!n) return X.toast('Pilih minimal satu perusahaan/cabang.', 'warn');
+          var btn = m.$('#rkgo'); btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Membuat PDF…';
+          X.api('payroll.rekapPdf', { periode: p, pilih: pilih, rincian: m.$('#rkrin').checked }).then(function (r) {
+            btn.disabled = false; btn.innerHTML = ico('download', 'sm') + 'Unduh PDF'; if (!r.success) return;
+            X.saveB64(r.data.nama, r.data.base64, 'application/pdf'); X.toast('Rekap gaji ' + X.periodeLabel(p) + ' diunduh (' + r.data.karyawan + ' karyawan).'); m.close();
+          });
+        };
+      } });
   };
   function repaintPay() { if (S.route !== 'payroll') return; P.el.innerHTML = payShell(); bindPay(); payTable(); }
   function bindPay() {
