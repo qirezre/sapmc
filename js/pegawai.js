@@ -13,9 +13,11 @@
   /* ---------------------------------------------------------------- ABSEN */
   var A = { shiftId: '', shiftDate: '', busy: false, mount: null, izin: null };
   function sched() { return S.boot.schedule; }
+  function sc0() { return S.boot.schedule || {}; }
+  function jd() { var j = sched().jadwal, n = X.nowIn(S.tz); return j && j.tanggal === n.date ? j : {}; }   // jadwal shift hari ini (bila sudah diatur HR)
   function curShift() {
     var sc = sched(), list = sc.pakaiShift ? sc.shifts : [sc.reguler], rec = activeRec();
-    var id = rec && rec.id_shift ? rec.id_shift : (sc.pakaiShift ? A.shiftId : 'REGULER');   // perusahaan bershift: wajib pilih tiap hari
+    var id = rec && rec.id_shift ? rec.id_shift : (sc.pakaiShift ? (jd().id_shift || A.shiftId) : 'REGULER');   // bershift: ikut jadwal HR; bila belum dijadwalkan, pilih sendiri
     return list.filter(function (s) { return s.id_shift === id; })[0] || (sc.pakaiShift ? null : list[0]);
   }
   function activeRec() {
@@ -40,29 +42,31 @@
     if (!sh) return '<div class="banner info">' + ic('', 'info') + '<div><b>Pilih shift dulu</b>Pilih shift kerja Anda hari ini sebelum absen masuk.</div></div>';
     var li = lateInfo(sh, n), dur = X.hmMin(sh.jam_pulang) - X.hmMin(sh.jam_masuk); if (dur <= 0) dur += 1440;
     if (li.raw > dur) return '<div class="banner info">' + ic('', 'info') + '<div><b>Di luar jam kerja</b>Jadwal ' + esc(sh.jam_masuk) + '–' + esc(sh.jam_pulang) + '. Pilih shift yang sesuai bila Anda bekerja sekarang.</div></div>';
-    if (li.raw <= 0) return '<div class="banner info">' + ic('', 'info') + '<div><b>Belum jam masuk</b>Jam masuk ' + esc(sh.jam_masuk) + '. Absen sebelum waktu tersebut agar tepat waktu.</div></div>';
+    if (li.raw <= 0) { var la = sc0().lemburAwal, awal = -li.raw, extra = la && la.aktif && awal > la.batas ? '<br><b>Masuk sekarang dihitung lembur ' + awal + ' menit</b> (menunggu persetujuan HR).' : ''; return '<div class="banner info">' + ic('', 'info') + '<div><b>Belum jam masuk</b>Jam masuk ' + esc(sh.jam_masuk) + '. Absen sebelum waktu tersebut agar tepat waktu.' + extra + '</div></div>'; }
     if (!li.counted) return '<div class="banner warn">' + ic('', 'clock') + '<div><b>Dalam toleransi (' + li.raw + ' mnt)</b>Toleransi ' + li.tol + ' menit. Segera absen.</div></div>';
     return '<div class="banner bad">' + ic('', 'alert') + '<div><b>Terlambat ' + li.counted + ' menit</b>Keterlambatan akan dicatat bila absen sekarang.</div></div>';
   }
   function absenHtml() {
     var me = S.boot.me, sc = sched(), sh = curShift(), n = X.nowIn(S.tz), rec = activeRec();
-    var shiftUi = sc.pakaiShift ? '<div class="field" style="margin:0 0 12px"><label for="shsel">Pilih Shift Hari Ini</label><select class="sel" id="shsel" ' + (rec ? 'disabled' : '') + '>' + (sh ? '' : '<option value="" selected>— Pilih shift dulu —</option>') + sc.shifts.map(function (s) { return '<option value="' + esc(s.id_shift) + '"' + (sh && s.id_shift === sh.id_shift ? ' selected' : '') + '>' + esc(s.nama) + ' · ' + esc(s.jam_masuk) + '–' + esc(s.jam_pulang) + '</option>'; }).join('') + '</select></div>' : '';
+    var jj = jd(), lib = sc.pakaiShift && !rec && !!jj.libur, terjadwal = sc.pakaiShift && !rec && !!jj.id_shift && !!sh;
+    var shiftUi = terjadwal ? '<div class="sline"><span class="muted">Shift hari ini (sesuai jadwal)</span><b>' + esc(sh.nama) + '</b></div>' : sc.pakaiShift ? '<div class="field" style="margin:0 0 12px"><label for="shsel">Pilih Shift Hari Ini</label><select class="sel" id="shsel" ' + (rec ? 'disabled' : '') + '>' + (sh ? '' : '<option value="" selected>— Pilih shift dulu —</option>') + sc.shifts.map(function (s) { return '<option value="' + esc(s.id_shift) + '"' + (sh && s.id_shift === sh.id_shift ? ' selected' : '') + '>' + esc(s.nama) + ' · ' + esc(s.jam_masuk) + '–' + esc(s.jam_pulang) + '</option>'; }).join('') + '</select></div>' : '';
     var rule = '<div class="sline"><span class="muted">Jam kerja</span><b class="mono">' + (sh ? esc(sh.jam_masuk) + ' – ' + esc(sh.jam_pulang) + (sh.lintas ? ' (+1)' : '') : '-') + '</b></div><div class="sline"><span class="muted">Toleransi</span><b class="mono">' + sc.toleransi + ' menit</b></div>';
     var pend = rec && rec.pending ? ' <span class="pending-dot" title="Menyimpan…"></span>' : '';
     var btn, iz = A.izin && A.izin.tanggal === n.date && !rec ? A.izin : null, izBox = '';
     if (iz) izBox = '<div class="banner ' + (iz.status === 'DISETUJUI' ? 'info' : 'warn') + '">' + ico('info') + '<div><b>' + (iz.jenis === 'SAKIT' ? 'Sakit' : 'Izin') + ' hari ini · ' + (iz.status === 'DISETUJUI' ? 'disetujui' + (iz.dihitung ? ' (dihitung hadir)' : ' (tidak dihitung)') : 'menunggu persetujuan HR') + '</b>Anda tidak perlu absen.' + (iz.status === 'MENUNGGU' ? ' <a href="#" data-act="izin-batal" data-id="' + esc(iz.id) + '" style="color:var(--primary);font-weight:600">Batalkan pengajuan</a>' : '') + '</div></div>';
-    var izBtn = !rec && !iz ? '<button class="btn btn-g btn-block" data-act="izin-form">' + ico('edit') + 'Tidak hadir? Ajukan Izin / Sakit</button>' : '';
-    if (iz) btn = '<button class="btn btn-g btn-xl btn-block" disabled>' + ico('check') + (iz.jenis === 'SAKIT' ? 'Sakit' : 'Izin') + ' hari ini</button>';
+    var izBtn = !rec && !iz && !lib ? '<button class="btn btn-g btn-block" data-act="izin-form">' + ico('edit') + 'Tidak hadir? Ajukan Izin / Sakit</button>' : '';
+    if (lib && !iz) btn = '<button class="btn btn-g btn-xl btn-block" disabled>' + ico('calendar') + 'Libur hari ini</button>';
+    else if (iz) btn = '<button class="btn btn-g btn-xl btn-block" disabled>' + ico('check') + (iz.jenis === 'SAKIT' ? 'Sakit' : 'Izin') + ' hari ini</button>';
     else if (!rec) btn = '<button class="btn btn-p btn-xl btn-block hero-btn" data-act="punch" data-kind="IN">' + ico('camera') + 'ABSEN MASUK (SELFIE)</button>';
     else if (!rec.waktu_pulang) btn = '<button class="btn btn-xl btn-block hero-btn" style="background:var(--dark);color:#fff" data-act="punch" data-kind="OUT" ' + (rec.pending ? 'disabled' : '') + '>' + ico('camera') + 'ABSEN PULANG (SELFIE)</button>';
     else btn = '<button class="btn btn-g btn-xl btn-block" disabled>' + ico('check') + 'Absensi Selesai</button>';
     return '<div class="page narrow" style="display:flex;flex-direction:column;gap:14px">' + obBanner() +
       '<div class="card"><div class="prof"><span class="av lg">' + esc(X.initials(me.nama)) + '</span><div style="min-width:0"><h2 style="font-size:18px;overflow:hidden;text-overflow:ellipsis">' + esc(me.nama) + '</h2><div class="mono muted" style="font-size:12px">' + esc(me.id) + '</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><span class="badge b-co">' + esc(sc.perusahaan) + '</span><span class="badge b-n">' + ico('pin', 'sm') + esc(sc.cabang) + '</span></div></div></div></div>' +
       '<div class="card clock"><div style="display:flex;justify-content:space-between;align-items:center"><span class="sm">Waktu Server</span><span class="pill-w">' + ico('clock', 'sm') + esc(sc.zona) + '</span></div><div class="big" data-clock="time">' + n.time + '</div><div class="sm" data-clock="date">' + X.dateLabel(n.date, true) + '</div></div>' +
-      (iz ? izBox : '<div class="card">' + shiftUi + rule + '</div>' + '<div id="bnr">' + banner(rec, sh, n) + '</div>') +
+      (iz ? izBox : lib ? '<div class="banner info">' + ico('info') + '<div><b>Jadwal Anda hari ini: Libur</b>Tidak perlu absen. Hubungi HR/atasan bila jadwal ini keliru.</div></div>' : '<div class="card">' + shiftUi + rule + '</div>' + '<div id="bnr">' + banner(rec, sh, n) + '</div>') +
       '<div class="grid g2 keep"><div class="card punch"><span class="lbl">MASUK' + pend + '</span><span class="v">' + (rec ? X.hm(rec.waktu_masuk) : '--:--') + '</span><span class="help">' + (rec ? (rec.menit_terlambat ? 'Terlambat ' + rec.menit_terlambat + ' mnt' : 'Tepat waktu') : 'Belum absen') + '</span></div>' +
       '<div class="card punch"><span class="lbl">PULANG</span><span class="v">' + (rec && rec.waktu_pulang ? X.hm(rec.waktu_pulang) : '--:--') + '</span><span class="help">' + (rec && rec.menit_lembur ? 'Lembur ' + rec.menit_lembur + ' mnt' + (rec.status_lembur === 'PENDING' ? ' · menunggu persetujuan' : rec.status_lembur === 'DITOLAK' ? ' · tidak dihitung' : '') : rec && rec.waktu_pulang ? 'Selesai' : 'Belum absen') + '</span></div></div>' +
-      btn + izBtn + '<p class="help tc" style="display:flex;gap:6px;justify-content:center;align-items:center">' + ico('bell', 'sm') + (S.boot.app.wa ? 'Pengingat absensi dikirim via WhatsApp ke nomor Anda.' : 'Pastikan absen tepat waktu setiap hari.') + '</p></div>';
+      btn + izBtn + (jj.minggu && jj.minggu.length ? '<div class="card"><div class="muted" style="font-size:12px;margin-bottom:6px">Jadwal shift 7 hari ke depan</div>' + jj.minggu.map(function (m) { return '<div class="sline"><span class="muted">' + esc(X.dateLabel(m.t)) + '</span><b>' + esc(m.s) + '</b></div>'; }).join('') + '</div>' : '') + '<p class="help tc" style="display:flex;gap:6px;justify-content:center;align-items:center">' + ico('bell', 'sm') + (S.boot.app.wa ? 'Pengingat absensi dikirim via WhatsApp ke nomor Anda.' : 'Pastikan absen tepat waktu setiap hari.') + '</p></div>';
   }
   V.absen = {
     render: function (el) {
@@ -86,7 +90,8 @@
     if (!rec) return 0; var n = X.nowIn(S.tz), nowAbs = Date.parse(n.date + 'T00:00:00Z') / 60000 + n.min;
     var dur = X.hmMin(rec.jadwal_pulang) - X.hmMin(rec.jadwal_masuk); if (dur <= 0) dur += 1440;
     var gr = sched().lemburMulai; gr = gr === undefined || gr === null ? 30 : gr;
-    return Math.floor(nowAbs - (Date.parse(rec.tanggal + 'T00:00:00Z') / 60000 + X.hmMin(rec.jadwal_masuk) + dur)) - gr;
+    var raw = Math.floor(nowAbs - (Date.parse(rec.tanggal + 'T00:00:00Z') / 60000 + X.hmMin(rec.jadwal_masuk) + dur));
+    return raw > gr ? raw : 0;   // sampai batas = tidak dihitung; lebih dari batas = dihitung penuh
   }
   function askAlasan(menit) {
     return new Promise(function (resolve) {
@@ -96,10 +101,23 @@
         onOpen: function (m) { var t = m.$('[name=alasan]'); m.onClose = function () { if (!done) resolve(null); }; m.$('#als').onclick = function () { var v = t.value.trim(); if (v.length < 3) return X.toast('Alasan lembur wajib diisi.', 'warn'); done = true; m.close(); resolve(v); }; } });
     });
   }
+  /** Masuk lebih awal (dihitung lembur): alasan BOLEH diisi, tidak wajib. resolve(teks) | resolve('') bila dilewati | resolve(null) bila dibatalkan */
+  function askAlasanAwal(menit) {
+    return new Promise(function (resolve) {
+      var done = false;
+      X.modal({ title: 'Masuk Lebih Awal', body: '<p class="muted" style="margin-bottom:10px">Anda masuk <b>' + menit + ' menit</b> lebih awal dari jadwal. Waktu ini dicatat sebagai lembur dan menunggu persetujuan HR. Alasan boleh diisi (tidak wajib).</p>' + X.field({ name: 'alasan', type: 'textarea', label: 'Alasan (opsional)', placeholder: 'mis. membuka toko / menerima barang' }),
+        footer: '<button class="btn btn-g" data-close>Batal</button><button class="btn btn-g" id="alsk">Lewati</button><button class="btn btn-p" id="als">Lanjut ambil foto</button>',
+        onOpen: function (m) { var t = m.$('[name=alasan]'); m.onClose = function () { if (!done) resolve(null); }; m.$('#als').onclick = function () { done = true; var v = t.value.trim(); m.close(); resolve(v); }; m.$('#alsk').onclick = function () { done = true; m.close(); resolve(''); }; } });
+    });
+  }
   X.ACT.punch = function (b) {
     var kind = b.dataset.kind; ALASAN = '';
     if (obGet()) return X.flushOutbox();                                       // ada absen tertunda: kirim itu dulu
     if (kind === 'OUT') { var mnt = lemburSekarang(activeRec()); if (mnt > 0) return askAlasan(mnt).then(function (v) { if (v) { ALASAN = v; openCam('OUT'); } }); }
+    if (kind === 'IN') {
+      var sh0 = curShift(), la = sc0().lemburAwal, n0 = X.nowIn(S.tz), aw = sh0 && la && la.aktif ? -lateInfo(sh0, n0).raw : 0;
+      if (aw > la.batas) return askAlasanAwal(aw).then(function (v) { if (v !== null) { ALASAN = v; openCam('IN'); } });
+    }
     openCam(kind);
   };
 
