@@ -768,8 +768,9 @@
   };
 
   /* ---------------------------------------------------------------- PERSETUJUAN LEMBUR */
-  var LB = { p: '', st: 'PENDING', comp: '', cab: '', data: null, el: null, sel: {} };
-  function lbBase() { return (LB.all || (LB.data && LB.data.rows) || []).filter(function (r) { return (!LB.comp || r.id_perusahaan === LB.comp) && (!LB.cab || r.id_cabang === LB.cab); }); }
+  var LB = { p: '', st: 'PENDING', comp: '', cab: '', jenis: '', data: null, el: null, sel: {} };
+  function lbBase() { return (LB.all || (LB.data && LB.data.rows) || []).filter(function (r) { return (!LB.comp || r.id_perusahaan === LB.comp) && (!LB.cab || r.id_cabang === LB.cab) && (!LB.jenis || (LB.jenis === 'awal' ? r.menit_awal > 0 : LB.jenis === 'akhir' ? r.menit_akhir > 0 : (r.menit_awal > 0 && r.menit_akhir === 0))); }); }
+  function lbDur(x) { return Math.floor(x / 60) + ' j ' + (x % 60) + ' m'; }
   function lbBody() {
     var d = LB.data; if (!d) return X.skel(5, 64);
     var chips = [['PENDING', 'Menunggu', d.count.PENDING], ['DISETUJUI', 'Disetujui', d.count.DISETUJUI], ['DITOLAK', 'Ditolak', d.count.DITOLAK], ['SEMUA', 'Semua', d.count.PENDING + d.count.DISETUJUI + d.count.DITOLAK]];
@@ -779,17 +780,18 @@
       (d.rows.length ? '<div class="list">' + d.rows.map(function (r) {
         var pend = r.status === 'PENDING', stt = LSB[r.status];
         return '<div class="li"><label style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:' + (pend && !r.sendiri && !r.admin ? 'pointer' : 'default') + '">' + (pend && !r.sendiri && !r.admin ? '<input type="checkbox" data-lb="' + esc(r.id_absen) + '" ' + (LB.sel[r.id_absen] ? 'checked' : '') + ' aria-label="Pilih">' : '<span style="width:16px"></span>') +
-          '<div class="grow" style="min-width:0"><div class="t1"><b>' + esc(r.nama) + '</b> <span class="muted">· ' + esc(r.cabang) + '</span></div><div class="t2">' + esc(X.dateLabel(r.tanggal)) + ' · pulang ' + (r.waktu_pulang ? X.hm(r.waktu_pulang) : '-') + ' (jadwal ' + esc(r.jadwal_pulang) + ') · <b>' + Math.floor(r.menit / 60) + ' j ' + (r.menit % 60) + ' m</b></div><div class="t2" style="white-space:normal">Alasan: ' + (r.alasan ? esc(r.alasan) : '<i>tidak diisi</i>') + (r.diubah_oleh ? ' · dikoreksi ' + esc(r.diubah_oleh) : '') + '</div></div></label>' +
+          '<div class="grow" style="min-width:0"><div class="t1"><b>' + esc(r.nama) + '</b> <span class="muted">· ' + esc(r.cabang) + '</span></div><div class="t2">' + esc(X.dateLabel(r.tanggal)) + ' · pulang ' + (r.waktu_pulang ? X.hm(r.waktu_pulang) : '-') + ' (jadwal ' + esc(r.jadwal_pulang) + ') · <b>' + lbDur(r.menit) + '</b></div>' + (r.menit_awal > 0 ? '<div class="t2"><span class="badge b-warn">Masuk awal ' + lbDur(r.menit_awal) + '</span> masuk ' + (r.masuk ? X.hm(r.masuk) : '-') + ' (jadwal ' + esc(r.jadwal_masuk) + ')' + (r.menit_akhir > 0 ? ' · <span class="badge b-info">Pulang akhir ' + lbDur(r.menit_akhir) + '</span>' : '') + '</div>' : '') + '<div class="t2" style="white-space:normal">Alasan: ' + (r.alasan ? esc(r.alasan) : '<i>tidak diisi</i>') + (r.diubah_oleh ? ' · dikoreksi ' + esc(r.diubah_oleh) : '') + '</div></div></label>' +
           '<div class="tr"><span class="badge ' + stt[1] + '">' + stt[0] + '</span>' + (r.oleh && !pend ? '<div class="muted" style="font-size:10px">' + esc(r.oleh) + '</div>' : '') + (pend && (r.sendiri || r.admin) ? '<div class="muted" style="font-size:10px">' + (r.admin ? 'disetujui Admin' : 'lembur sendiri') + '</div>' : '') + '</div></div>';
       }).join('') + '</div>' : '<div class="card flat">' + X.empty('check', 'Tidak ada lembur', 'Tidak ada pengajuan lembur dengan status ini pada periode ini.') + '</div>');
   }
   function lbPaint(force) {
     var el = LB.el; if (!el) return; var p = LB.p;
-    var bar = '<div class="toolbar"><div style="display:flex;align-items:center;gap:6px"><button class="btn btn-g btn-s" data-act="lb-prev" aria-label="Bulan sebelumnya">' + ico('chevL', 'sm') + '</button><b style="min-width:132px;text-align:center">' + X.periodeLabel(p) + '</b><button class="btn btn-g btn-s" data-act="lb-next" aria-label="Bulan berikutnya" ' + (p >= X.periodeNow() ? 'disabled' : '') + '>' + ico('chevR', 'sm') + '</button></div>' + selHtml('lbcomp', [{ v: '', l: 'Semua perusahaan' }].concat(compOptions()), LB.comp, 190) + '<span>' + cabSel('lbcab', LB.comp, LB.cab) + '</span><span class="grow"></span><p class="help">Hanya lembur yang disetujui yang dihitung ke payroll.</p></div>';
+    var bar = '<div class="toolbar"><div style="display:flex;align-items:center;gap:6px"><button class="btn btn-g btn-s" data-act="lb-prev" aria-label="Bulan sebelumnya">' + ico('chevL', 'sm') + '</button><b style="min-width:132px;text-align:center">' + X.periodeLabel(p) + '</b><button class="btn btn-g btn-s" data-act="lb-next" aria-label="Bulan berikutnya" ' + (p >= X.periodeNow() ? 'disabled' : '') + '>' + ico('chevR', 'sm') + '</button></div>' + selHtml('lbcomp', [{ v: '', l: 'Semua perusahaan' }].concat(compOptions()), LB.comp, 190) + '<span>' + cabSel('lbcab', LB.comp, LB.cab) + '</span>' + selHtml('lbjenis', [{ v: '', l: 'Semua jenis lembur' }, { v: 'awal', l: 'Ada lembur masuk awal' }, { v: 'akhir', l: 'Ada lembur pulang akhir' }, { v: 'awalsaja', l: 'Masuk awal saja' }], LB.jenis, 190) + '<span class="grow"></span><p class="help">Hanya lembur yang disetujui yang dihitung ke payroll.</p></div>';
     el.innerHTML = '<div class="page narrow-ish"><div id="lbbar">' + bar + '</div><div id="lbbody">' + lbBody() + '</div></div>'; lbBind();
     var fc = $('#lbcomp'), fb = $('#lbcab');
     if (fc) fc.onchange = function () { LB.comp = fc.value; LB.cab = ''; LB.sel = {}; lbPaint(); };
     if (fb) fb.onchange = function () { LB.cab = fb.value; LB.sel = {}; lbPaint(); };
+    var fj = $('#lbjenis'); if (fj) fj.onchange = function () { LB.jenis = fj.value; LB.sel = {}; lbPaint(); };
     if (LB.data) lbRender();
     X.swr('lbr:' + p, 'lembur.list', { periode: p, status: 'SEMUA' }, function (d) { if (S.route === 'lembur' && LB.p === p) { LB.data = d; LB.all = d.rows; lbRender(); } }, { ttl: force ? 0 : 15000 });
   }

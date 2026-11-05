@@ -42,7 +42,7 @@
     if (!sh) return '<div class="banner info">' + ic('', 'info') + '<div><b>Pilih shift dulu</b>Pilih shift kerja Anda hari ini sebelum absen masuk.</div></div>';
     var li = lateInfo(sh, n), dur = X.hmMin(sh.jam_pulang) - X.hmMin(sh.jam_masuk); if (dur <= 0) dur += 1440;
     if (li.raw > dur) return '<div class="banner info">' + ic('', 'info') + '<div><b>Di luar jam kerja</b>Jadwal ' + esc(sh.jam_masuk) + '–' + esc(sh.jam_pulang) + '. Pilih shift yang sesuai bila Anda bekerja sekarang.</div></div>';
-    if (li.raw <= 0) { var la = sc0().lemburAwal, awal = -li.raw, extra = la && la.aktif && awal > la.batas ? '<br><b>Masuk sekarang dihitung lembur ' + awal + ' menit</b> (menunggu persetujuan HR).' : ''; return '<div class="banner info">' + ic('', 'info') + '<div><b>Belum jam masuk</b>Jam masuk ' + esc(sh.jam_masuk) + '. Absen sebelum waktu tersebut agar tepat waktu.' + extra + '</div></div>'; }
+    if (li.raw <= 0) return '<div class="banner info">' + ic('', 'info') + '<div><b>Belum jam masuk</b>Jam masuk ' + esc(sh.jam_masuk) + '. Absen sebelum waktu tersebut agar tepat waktu.</div></div>';
     if (!li.counted) return '<div class="banner warn">' + ic('', 'clock') + '<div><b>Dalam toleransi (' + li.raw + ' mnt)</b>Toleransi ' + li.tol + ' menit. Segera absen.</div></div>';
     return '<div class="banner bad">' + ic('', 'alert') + '<div><b>Terlambat ' + li.counted + ' menit</b>Keterlambatan akan dicatat bila absen sekarang.</div></div>';
   }
@@ -101,23 +101,10 @@
         onOpen: function (m) { var t = m.$('[name=alasan]'); m.onClose = function () { if (!done) resolve(null); }; m.$('#als').onclick = function () { var v = t.value.trim(); if (v.length < 3) return X.toast('Alasan lembur wajib diisi.', 'warn'); done = true; m.close(); resolve(v); }; } });
     });
   }
-  /** Masuk lebih awal (dihitung lembur): alasan BOLEH diisi, tidak wajib. resolve(teks) | resolve('') bila dilewati | resolve(null) bila dibatalkan */
-  function askAlasanAwal(menit) {
-    return new Promise(function (resolve) {
-      var done = false;
-      X.modal({ title: 'Masuk Lebih Awal', body: '<p class="muted" style="margin-bottom:10px">Anda masuk <b>' + menit + ' menit</b> lebih awal dari jadwal. Waktu ini dicatat sebagai lembur dan menunggu persetujuan HR. Alasan boleh diisi (tidak wajib).</p>' + X.field({ name: 'alasan', type: 'textarea', label: 'Alasan (opsional)', placeholder: 'mis. membuka toko / menerima barang' }),
-        footer: '<button class="btn btn-g" data-close>Batal</button><button class="btn btn-g" id="alsk">Lewati</button><button class="btn btn-p" id="als">Lanjut ambil foto</button>',
-        onOpen: function (m) { var t = m.$('[name=alasan]'); m.onClose = function () { if (!done) resolve(null); }; m.$('#als').onclick = function () { done = true; var v = t.value.trim(); m.close(); resolve(v); }; m.$('#alsk').onclick = function () { done = true; m.close(); resolve(''); }; } });
-    });
-  }
   X.ACT.punch = function (b) {
     var kind = b.dataset.kind; ALASAN = '';
     if (obGet()) return X.flushOutbox();                                       // ada absen tertunda: kirim itu dulu
     if (kind === 'OUT') { var mnt = lemburSekarang(activeRec()); if (mnt > 0) return askAlasan(mnt).then(function (v) { if (v) { ALASAN = v; openCam('OUT'); } }); }
-    if (kind === 'IN') {
-      var sh0 = curShift(), la = sc0().lemburAwal, n0 = X.nowIn(S.tz), aw = sh0 && la && la.aktif ? -lateInfo(sh0, n0).raw : 0;
-      if (aw > la.batas) return askAlasanAwal(aw).then(function (v) { if (v !== null) { ALASAN = v; openCam('IN'); } });
-    }
     openCam(kind);
   };
 
