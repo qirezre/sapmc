@@ -773,7 +773,7 @@
     var d = LB.data; if (!d) return X.skel(5, 64);
     var chips = [['PENDING', 'Menunggu', d.count.PENDING], ['DISETUJUI', 'Disetujui', d.count.DISETUJUI], ['DITOLAK', 'Ditolak', d.count.DITOLAK], ['SEMUA', 'Semua', d.count.PENDING + d.count.DISETUJUI + d.count.DITOLAK]];
     var n = Object.keys(LB.sel).length;
-    return '<div class="toolbar" style="gap:8px"><div class="seg" role="tablist">' + chips.map(function (c) { return '<button class="' + (LB.st === c[0] ? 'on' : '') + '" data-act="lb-st" data-s="' + c[0] + '">' + c[1] + ' <span class="muted">' + c[2] + '</span></button>'; }).join('') + '</div><span class="grow"></span>' +
+    return '<div class="toolbar" style="gap:8px"><div class="seg" role="tablist">' + chips.map(function (c) { return '<button class="' + (LB.st === c[0] ? 'on' : '') + '" data-act="lb-st" data-s="' + c[0] + '">' + c[1] + ' <span class="muted">' + c[2] + '</span></button>'; }).join('') + '</div><span class="grow"></span><button class="btn btn-g" data-act="lb-recalc" title="Terapkan aturan lembur terbaru pada data yang sudah tersimpan">' + ico('refresh', 'sm') + 'Hitung Ulang</button>' +
       (LB.st === 'PENDING' || LB.st === 'SEMUA' ? '<button class="btn btn-g" data-act="lb-all">Pilih semua menunggu</button><button class="btn btn-g" data-act="lb-do" data-k="DITOLAK" ' + (n ? '' : 'disabled') + '>Tolak (' + n + ')</button><button class="btn btn-p" data-act="lb-do" data-k="DISETUJUI" ' + (n ? '' : 'disabled') + '>' + ico('check', 'sm') + 'Setujui (' + n + ')</button>' : '') + '</div>' +
       (d.rows.length ? '<div class="list">' + d.rows.map(function (r) {
         var pend = r.status === 'PENDING', stt = LSB[r.status];
@@ -795,6 +795,26 @@
   X.ACT['lb-next'] = function () { if (LB.p < X.periodeNow()) { LB.p = X.periodeShift(LB.p, 1); LB.data = null; LB.sel = {}; lbPaint(); } };
   X.ACT['lb-st'] = function (b) { LB.st = b.dataset.s; LB.sel = {}; lbRender(); };
   X.ACT['lb-all'] = function () { (LB.all || []).forEach(function (r) { if (r.status === 'PENDING' && !r.sendiri && !r.admin) LB.sel[r.id_absen] = true; }); lbRender(); };
+  X.ACT['lb-recalc'] = function () {
+    var p = LB.p, mgmt = S.boot.me.role === 'MANAJEMEN';
+    var m = X.modal({ title: 'Hitung Ulang Lembur · ' + X.periodeLabel(p), body: '<p class="muted" style="margin-bottom:10px">Menghitung ulang lembur yang sudah tersimpan dengan aturan terbaru (lembur lebih dari batas dihitung penuh, masuk awal bila diaktifkan). Lembur yang diinput sebagai total bulanan dan yang ditolak tidak diubah.</p>' +
+      (mgmt ? '<label style="display:flex;gap:8px;margin-bottom:10px"><input type="checkbox" id="rcsetuju"> Termasuk yang sudah disetujui <span class="muted">(mengubah nominal payroll)</span></label>' : '') + '<div id="rcbox">' + X.skel(3, 40) + '</div>',
+      footer: '<button class="btn btn-g" data-close>Tutup</button><button class="btn btn-p" id="rcdo" disabled>Terapkan</button>',
+      onOpen: function (mm) {
+        var load = function () {
+          var inc = mgmt && mm.$('#rcsetuju').checked, bt = mm.$('#rcdo'); bt.disabled = true; mm.$('#rcbox').innerHTML = X.skel(3, 40);
+          X.api('lembur.hitungUlang', { periode: p, termasuk_disetujui: inc }).then(function (r) {
+            if (!r.success) { mm.$('#rcbox').innerHTML = '<p class="muted">Gagal memuat.</p>'; return; }
+            var rows = r.data.perubahan, f = function (x) { return Math.floor(x / 60) + ' j ' + (x % 60) + ' m'; };
+            mm.$('#rcbox').innerHTML = rows.length ? '<div style="max-height:260px;overflow:auto"><table class="t"><thead><tr><th>Karyawan</th><th>Tanggal</th><th class="num">Lama</th><th class="num">Baru</th></tr></thead><tbody>' + rows.map(function (x) { return '<tr><td>' + esc(x.nama) + '</td><td>' + esc(X.dateLabel(x.tanggal)) + '</td><td class="num">' + f(x.lama) + '</td><td class="num"><b>' + f(x.baru) + '</b></td></tr>'; }).join('') + '</tbody></table></div><p class="help" style="margin-top:8px">' + rows.length + ' absensi akan diubah.</p>' : '<p class="muted" style="text-align:center;padding:14px">Semua lembur sudah sesuai aturan terbaru.</p>';
+            bt.disabled = !rows.length; bt.onclick = function () {
+              bt.disabled = true; X.api('lembur.hitungUlang', { periode: p, termasuk_disetujui: inc, simpan: true }).then(function (r2) { if (!r2.success) { bt.disabled = false; return; } mm.close(); X.toast(r2.message); ['lbr:', 'hmon:', 'hrk:', 'hist:', 'pay'].forEach(function (k) { X.invalidate(k); }); LB.sel = {}; lbPaint(true); });
+            };
+          });
+        };
+        if (mgmt) mm.$('#rcsetuju').onchange = load; load();
+      } });
+  };
   X.ACT['lb-do'] = function (b) {
     var ids = Object.keys(LB.sel); if (!ids.length) return; var k = b.dataset.k, p = LB.p;
     X.confirm({ title: (k === 'DISETUJUI' ? 'Setujui ' : 'Tolak ') + ids.length + ' lembur?', text: k === 'DISETUJUI' ? 'Lembur akan dihitung ke payroll.' : 'Lembur tidak akan dihitung ke payroll.', ok: k === 'DISETUJUI' ? 'Setujui' : 'Tolak', danger: k === 'DITOLAK' }).then(function (ok) {
