@@ -133,7 +133,7 @@
     var el = e.target; if (!el.classList || !el.classList.contains('mi')) return;
     var ent = M.ent, key = el.dataset.k, f = el.dataset.f, nw = (M.news[ent] || []).filter(function (x) { return x._key === key; })[0], pk = ENT[ent].pk;
     var row = nw || (M.rows[ent] || []).filter(function (x) { return x[pk] === key; })[0]; if (!row) return;
-    var col = MC[ent].filter(function (c) { return c[0] === f; })[0], v = el.type === 'checkbox' ? el.checked : (col[2] === 'n' ? (el.value === '' ? 0 : Number(el.value)) : el.value);
+    var col = MC[ent].filter(function (c) { return c[0] === f; })[0], v = el.type === 'checkbox' ? el.checked : (col[2] === 'n' ? (el.value === '' ? (col[5] !== undefined ? '' : 0) : Number(el.value)) : el.value);   // kolom ber-bawaan: kosong = ikut bawaan, bukan 0
     var set = function (ff, vv, node) {
       if (nw) { nw[ff] = vv; return; }
       var orig = row[ff], same = typeof vv === 'boolean' ? bv(orig) === vv : String(orig === undefined || orig === null ? '' : orig) === String(vv);
@@ -768,7 +768,8 @@
   };
 
   /* ---------------------------------------------------------------- PERSETUJUAN LEMBUR */
-  var LB = { p: '', st: 'PENDING', data: null, el: null, sel: {} };
+  var LB = { p: '', st: 'PENDING', comp: '', cab: '', data: null, el: null, sel: {} };
+  function lbBase() { return (LB.all || (LB.data && LB.data.rows) || []).filter(function (r) { return (!LB.comp || r.id_perusahaan === LB.comp) && (!LB.cab || r.id_cabang === LB.cab); }); }
   function lbBody() {
     var d = LB.data; if (!d) return X.skel(5, 64);
     var chips = [['PENDING', 'Menunggu', d.count.PENDING], ['DISETUJUI', 'Disetujui', d.count.DISETUJUI], ['DITOLAK', 'Ditolak', d.count.DITOLAK], ['SEMUA', 'Semua', d.count.PENDING + d.count.DISETUJUI + d.count.DITOLAK]];
@@ -784,17 +785,21 @@
   }
   function lbPaint(force) {
     var el = LB.el; if (!el) return; var p = LB.p;
-    var bar = '<div class="toolbar"><div style="display:flex;align-items:center;gap:6px"><button class="btn btn-g btn-s" data-act="lb-prev" aria-label="Bulan sebelumnya">' + ico('chevL', 'sm') + '</button><b style="min-width:132px;text-align:center">' + X.periodeLabel(p) + '</b><button class="btn btn-g btn-s" data-act="lb-next" aria-label="Bulan berikutnya" ' + (p >= X.periodeNow() ? 'disabled' : '') + '>' + ico('chevR', 'sm') + '</button></div><span class="grow"></span><p class="help">Hanya lembur yang disetujui yang dihitung ke payroll.</p></div>';
+    var bar = '<div class="toolbar"><div style="display:flex;align-items:center;gap:6px"><button class="btn btn-g btn-s" data-act="lb-prev" aria-label="Bulan sebelumnya">' + ico('chevL', 'sm') + '</button><b style="min-width:132px;text-align:center">' + X.periodeLabel(p) + '</b><button class="btn btn-g btn-s" data-act="lb-next" aria-label="Bulan berikutnya" ' + (p >= X.periodeNow() ? 'disabled' : '') + '>' + ico('chevR', 'sm') + '</button></div>' + selHtml('lbcomp', [{ v: '', l: 'Semua perusahaan' }].concat(compOptions()), LB.comp, 190) + '<span>' + cabSel('lbcab', LB.comp, LB.cab) + '</span><span class="grow"></span><p class="help">Hanya lembur yang disetujui yang dihitung ke payroll.</p></div>';
     el.innerHTML = '<div class="page narrow-ish"><div id="lbbar">' + bar + '</div><div id="lbbody">' + lbBody() + '</div></div>'; lbBind();
+    var fc = $('#lbcomp'), fb = $('#lbcab');
+    if (fc) fc.onchange = function () { LB.comp = fc.value; LB.cab = ''; LB.sel = {}; lbPaint(); };
+    if (fb) fb.onchange = function () { LB.cab = fb.value; LB.sel = {}; lbPaint(); };
+    if (LB.data) lbRender();
     X.swr('lbr:' + p, 'lembur.list', { periode: p, status: 'SEMUA' }, function (d) { if (S.route === 'lembur' && LB.p === p) { LB.data = d; LB.all = d.rows; lbRender(); } }, { ttl: force ? 0 : 15000 });
   }
-  function lbRender() { var d = LB.data; if (!d) return; var all = LB.all || d.rows; d = { count: d.count, rows: all.filter(function (r) { return LB.st === 'SEMUA' || r.status === LB.st; }) }; var keep = LB.data; LB.data = d; var b = $('#lbbody'); if (b) { b.innerHTML = lbBody(); lbBind(); } LB.data = keep; }
+  function lbRender() { var d = LB.data; if (!d) return; var all = lbBase(), cnt = { PENDING: 0, DISETUJUI: 0, DITOLAK: 0 }; all.forEach(function (r) { cnt[r.status]++; }); d = { count: cnt, rows: all.filter(function (r) { return LB.st === 'SEMUA' || r.status === LB.st; }) }; var keep = LB.data; LB.data = d; var b = $('#lbbody'); if (b) { b.innerHTML = lbBody(); lbBind(); } LB.data = keep; }
   function lbBind() { X.$$('[data-lb]', LB.el).forEach(function (c) { c.onchange = function () { if (c.checked) LB.sel[c.dataset.lb] = true; else delete LB.sel[c.dataset.lb]; lbRender(); }; }); }
   V.lembur = { render: function (el) { LB.el = el; LB.p = LB.p || X.periodeNow(); LB.sel = {}; lbPaint(); } };
   X.ACT['lb-prev'] = function () { LB.p = X.periodeShift(LB.p, -1); LB.data = null; LB.sel = {}; lbPaint(); };
   X.ACT['lb-next'] = function () { if (LB.p < X.periodeNow()) { LB.p = X.periodeShift(LB.p, 1); LB.data = null; LB.sel = {}; lbPaint(); } };
   X.ACT['lb-st'] = function (b) { LB.st = b.dataset.s; LB.sel = {}; lbRender(); };
-  X.ACT['lb-all'] = function () { (LB.all || []).forEach(function (r) { if (r.status === 'PENDING' && !r.sendiri && !r.admin) LB.sel[r.id_absen] = true; }); lbRender(); };
+  X.ACT['lb-all'] = function () { lbBase().forEach(function (r) { if (r.status === 'PENDING' && !r.sendiri && !r.admin) LB.sel[r.id_absen] = true; }); lbRender(); };
   X.ACT['lb-recalc'] = function () {
     var p = LB.p, mgmt = S.boot.me.role === 'MANAJEMEN';
     var m = X.modal({ title: 'Hitung Ulang Lembur · ' + X.periodeLabel(p), body: '<p class="muted" style="margin-bottom:10px">Menghitung ulang lembur yang sudah tersimpan dengan aturan terbaru (lembur lebih dari batas dihitung penuh, masuk awal bila diaktifkan). Lembur yang diinput sebagai total bulanan dan yang ditolak tidak diubah.</p>' +
