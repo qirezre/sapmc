@@ -269,14 +269,15 @@
       'Akun Saya', ['absen', 'Absen', 'clock'], ['riwayat', 'Riwayat', 'calendar'], ['slip', 'Slip Saya', 'file'], ['profil', 'Profil', 'user']],
     MANAJEMEN: [['dash', 'Dashboard', 'grid'], ['master', 'Master Data', 'db'], ['hmon', 'Monitor Absen', 'users'], ['hrekap', 'Rekap Absen', 'calendar'], ['amanual', 'Input Absen Bulanan', 'edit'], ['izin', 'Izin & Sakit', 'user'], ['jadwal', 'Jadwal Shift', 'calendar'], ['mutasi', 'Mutasi Karyawan', 'users'], ['lembur', 'Persetujuan Lembur', 'check'], ['payroll', 'Payroll', 'card'], ['gaji', 'Master Gaji', 'db'], ['adj', 'Potongan', 'edit'], ['bonus', 'Bonus', 'gift'], 'Sistem', ['akses', 'Hak Akses', 'shield'], ['wa', 'Pengaturan', 'sliders'], ['migrasi', 'Migrasi Data', 'upload'], ['profil', 'Profil', 'user']]
   };
-  NAV.KEPALA = NAV.HR.filter(function (x) { return x[0] !== 'mutasi'; });   // mutasi hanya HR & Manajemen
+  NAV.KEPALA = NAV.HR.filter(function (x) { return x[0] !== 'mutasi'; });   // Kepala Toko tidak punya Mutasi
+  NAV.MANAJER = NAV.HR;                                                       // Manajer: satu perusahaan, semua cabang
   NAV.FINANCE.splice(NAV.FINANCE.indexOf('Akun Saya'), 0, ['amanual', 'Input Absen Bulanan', 'edit', ['can_edit_absen']], ['izin', 'Izin & Sakit', 'user', ['can_edit_absen']], ['jadwal', 'Jadwal Shift', 'calendar', ['can_edit_absen']], ['lembur', 'Persetujuan Lembur', 'check', ['can_approve_lembur']]);
   function navItems() {
     var me = S.boot.me, list = NAV[me.role] || NAV.PEGAWAI;
     return list.filter(function (x) { return typeof x === 'string' || !x[3] || me.role === 'MANAJEMEN' || x[3].some(function (k) { return me.perms[k]; }); })
       .filter(function (x, i, a) { return typeof x !== 'string' || (a[i + 1] && typeof a[i + 1] !== 'string'); });
   }
-  function homeRoute() { var r = S.boot.me.role; return r === 'MANAJEMEN' ? 'dash' : r === 'FINANCE' ? 'fhome' : (r === 'HR' || r === 'KEPALA') ? 'hmon' : 'absen'; }
+  function homeRoute() { var r = S.boot.me.role; return r === 'MANAJEMEN' ? 'dash' : r === 'FINANCE' ? 'fhome' : (r === 'HR' || r === 'KEPALA' || r === 'MANAJER') ? 'hmon' : 'absen'; }
   function allowed(name) { return navItems().some(function (x) { return typeof x !== 'string' && x[0] === name; }); }
 
   function renderChrome() {
