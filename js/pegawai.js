@@ -34,7 +34,7 @@
   }
   function banner(rec, sh, n) {
     var ic = function (c, i) { return '<span style="flex:none">' + ico(i, 'lg') + '</span>'; };
-    if (rec && rec.waktu_pulang) return '<div class="banner ok">' + ic('', 'check') + '<div><b>Absensi hari ini selesai</b>Terima kasih, sampai jumpa besok.</div></div>';
+    if (rec && rec.waktu_pulang) return '<div class="banner ok">' + ic('', 'check') + '<div><b>Absensi hari ini selesai</b>' + (rec.pulang_awal ? 'Pulang lebih awal dari jadwal — hari ini dihitung setengah hari.' : 'Terima kasih, sampai jumpa besok.') + '</div></div>';
     if (rec) {
       if (rec.menit_terlambat > 0) return '<div class="banner warn">' + ic('', 'alert') + '<div><b>Terlambat ' + rec.menit_terlambat + ' menit</b>Keterlambatan dicatat pada rekap kehadiran Anda.</div></div>';
       return '<div class="banner ok">' + ic('', 'check') + '<div><b>Tepat waktu</b>Absen masuk Anda tercatat tanpa keterlambatan.</div></div>';
@@ -83,7 +83,7 @@
   };
   function bindAbsen(el) { var s = $('#shsel', el); if (s) s.onchange = function () { A.shiftId = s.value; el.innerHTML = absenHtml(); bindAbsen(el); }; }
 
-  var ALASAN = '';
+  var ALASAN = '', DULUAN = '';
   var LST = { PENDING: ['Menunggu persetujuan', 'b-warn'], DISETUJUI: ['Disetujui', 'b-ok'], DITOLAK: ['Ditolak', 'b-bad'] };
   /** menit lembur bila pulang sekarang (perkiraan sisi klien; server tetap menghitung ulang) */
   function lemburSekarang(rec) {
@@ -92,6 +92,21 @@
     var gr = sched().lemburMulai; gr = gr === undefined || gr === null ? 30 : gr;
     var raw = Math.floor(nowAbs - (Date.parse(rec.tanggal + 'T00:00:00Z') / 60000 + X.hmMin(rec.jadwal_masuk) + dur));
     return raw > gr ? raw : 0;   // sampai batas = tidak dihitung; lebih dari batas = dihitung penuh
+  }
+  /** menit pulang lebih awal dari jadwal bila pulang sekarang (0 bila masih dalam toleransi 15 menit) */
+  function duluanSekarang(rec) {
+    if (!rec) return 0; var n = X.nowIn(S.tz), nowAbs = Date.parse(n.date + 'T00:00:00Z') / 60000 + n.min;
+    var dur = X.hmMin(rec.jadwal_pulang) - X.hmMin(rec.jadwal_masuk); if (dur <= 0) dur += 1440;
+    var cepat = Math.floor(Date.parse(rec.tanggal + 'T00:00:00Z') / 60000 + X.hmMin(rec.jadwal_masuk) + dur - nowAbs);
+    return cepat > 15 ? cepat : 0;
+  }
+  function askDuluan(menit, jam) {
+    return new Promise(function (resolve) {
+      var done = false;
+      X.modal({ title: 'Pulang Lebih Awal', body: '<p class="muted" style="margin-bottom:10px">Jadwal pulang Anda pukul <b>' + esc(jam || '') + '</b>, ' + (menit ? 'masih <b>' + menit + ' menit</b> lagi. ' : '') + 'Bila pulang sekarang, absen hari ini dihitung <b>setengah hari</b>.</p>' + X.field({ name: 'alasan', type: 'textarea', label: 'Alasan pulang lebih awal', required: true, placeholder: 'mis. izin keperluan keluarga, sakit' }),
+        footer: '<button class="btn btn-g" data-close>Batal</button><button class="btn btn-p" id="pdl">Pulang duluan</button>',
+        onOpen: function (m) { var t = m.$('[name=alasan]'); m.onClose = function () { if (!done) resolve(null); }; m.$('#pdl').onclick = function () { var v = t.value.trim(); if (v.length < 3) return X.toast('Alasan wajib diisi.', 'warn'); done = true; m.close(); resolve(v); }; } });
+    });
   }
   function askAlasan(menit) {
     return new Promise(function (resolve) {
@@ -102,9 +117,12 @@
     });
   }
   X.ACT.punch = function (b) {
-    var kind = b.dataset.kind; ALASAN = '';
+    var kind = b.dataset.kind; ALASAN = ''; DULUAN = '';
     if (obGet()) return X.flushOutbox();                                       // ada absen tertunda: kirim itu dulu
-    if (kind === 'OUT') { var mnt = lemburSekarang(activeRec()); if (mnt > 0) return askAlasan(mnt).then(function (v) { if (v) { ALASAN = v; openCam('OUT'); } }); }
+    if (kind === 'OUT') {
+      var mnt = lemburSekarang(activeRec()); if (mnt > 0) return askAlasan(mnt).then(function (v) { if (v) { ALASAN = v; openCam('OUT'); } });
+      var cp = duluanSekarang(activeRec()); if (cp > 0) return askDuluan(cp, (activeRec() || {}).jadwal_pulang).then(function (v) { if (v) { DULUAN = v; openCam('OUT'); } });
+    }
     openCam(kind);
   };
 
@@ -207,7 +225,7 @@
   }
   function sendPunch(o) {
     var prev = S.boot.today;
-    return X.api(o.kind === 'IN' ? 'absen.clockIn' : 'absen.clockOut', { foto: o.photo, id_shift: o.id_shift, alasan_lembur: o.alasan || '', t_klien: o.t }).then(function (r) {
+    return X.api(o.kind === 'IN' ? 'absen.clockIn' : 'absen.clockOut', { foto: o.photo, id_shift: o.id_shift, alasan_lembur: o.alasan || '', pulang_duluan: !!o.duluan, alasan_pulang: o.duluan || '', t_klien: o.t }).then(function (r) {
       A.busy = false;
       if (r.success) {
         obSet(null); S.boot.today = r.data.today; S.off = (r.data.serverNow || Date.now()) - Date.now(); X.LS.set('boot', S.boot); X.invalidate('hist:');
@@ -217,6 +235,10 @@
         X.toast('Absen belum terkirim — tersimpan di HP. ' + (r.code === 'AUTH' ? 'Masuk kembali, lalu absen otomatis dikirim.' : 'Periksa internet lalu tekan Kirim ulang.'), 'err');
       } else if (r.code === 'DUP') {
         obSet(null); X.toast('Absen ini sudah tercatat sebelumnya.'); X.refreshBoot();
+      } else if (r.code === 'PULANG_AWAL') {
+        S.boot.today = o.prev || prev; var cm = parseInt((/pulang (\d+) menit/.exec(r.message || '') || [0, 0])[1], 10);
+        askDuluan(isNaN(cm) ? 0 : cm, ((o.prev || prev || {}).jadwal_pulang) || '').then(function (v) { if (v) { o.duluan = v; obSet(o); A.busy = true; S.boot.today = Object.assign({}, S.boot.today || {}, { pending: true }); sendPunch(o); } else { obSet(null); repaintAbsen(); } });
+        return;
       } else if (r.code === 'ALASAN') {
         S.boot.today = o.prev || prev; var mm = parseInt((/(\d+) menit/.exec(r.message || '') || [0, 1])[1], 10);
         askAlasan(isNaN(mm) ? 1 : mm).then(function (v) { if (v) { o.alasan = v; obSet(o); A.busy = true; S.boot.today = Object.assign({}, S.boot.today || {}, { pending: true }); sendPunch(o); } else { obSet(null); repaintAbsen(); } });
@@ -234,7 +256,7 @@
     var prev = S.boot.today, n = X.nowIn(S.tz), sh = curShift(), li = lateInfo(sh, n), tmp;
     if (kind === 'IN') tmp = { id: 'tmp', tanggal: n.date, id_shift: sh.id_shift, jadwal_masuk: sh.jam_masuk, jadwal_pulang: sh.jam_pulang, waktu_masuk: n.full, waktu_pulang: '', menit_terlambat: li.counted, denda: li.denda, menit_lembur: 0, nominal_lembur: 0, status: li.counted ? 'TERLAMBAT' : 'HADIR', lintas: sh.lintas, pending: true };
     else tmp = Object.assign({}, prev, { waktu_pulang: n.full, pending: true });
-    var o = { uid: S.boot.me.id, kind: kind, photo: photo, alasan: ALASAN, id_shift: sh.id_shift, t: Date.now() + S.off, jam: n.time.slice(0, 5), prev: prev };
+    var o = { uid: S.boot.me.id, kind: kind, photo: photo, alasan: ALASAN, duluan: DULUAN, id_shift: sh.id_shift, t: Date.now() + S.off, jam: n.time.slice(0, 5), prev: prev };
     obSet(o); S.boot.today = tmp; repaintAbsen();
     sendPunch(o);
   }
@@ -257,7 +279,7 @@
       st('Hari Hadir', s.hadir + ' hari', 'ic-ok', 'check') + st('Total Menit Telat', s.menitTelat + ' mnt', 'ic-w', 'clock') + st('Hari Terlambat', s.telat + ' hari', 'ic-b', 'alert') + st('Lembur', (Math.round(s.menitLembur / 6) / 10) + ' jam', 'ic-i', 'trend') + '</div>';
     var list = d.rows.length ? '<div class="list">' + d.rows.map(function (r) {
       var dt = X.dateLabel(r.tanggal).split(', ');
-      return '<div class="li click" data-act="rw-open" data-id="' + esc(r.id) + '" role="button" tabindex="0"><div class="av" style="flex-direction:column;line-height:1;font-size:15px"><span>' + r.tanggal.slice(8) + '</span><span style="font-size:9px;font-weight:600">' + dt[0] + '</span></div><div class="grow"><div class="t1 mono" style="font-size:13px">' + X.hm(r.waktu_masuk) + ' → ' + (r.waktu_pulang ? X.hm(r.waktu_pulang) : '--:--') + '</div><div class="t2">' + (r.menit_lembur ? 'Lembur ' + r.menit_lembur + ' mnt' + (r.status_lembur && r.status_lembur !== 'DISETUJUI' ? ' · ' + LST[r.status_lembur][0].toLowerCase() : '') : r.waktu_pulang ? 'Selesai' : 'Belum pulang') + '</div></div>' +
+      return '<div class="li click" data-act="rw-open" data-id="' + esc(r.id) + '" role="button" tabindex="0"><div class="av" style="flex-direction:column;line-height:1;font-size:15px"><span>' + r.tanggal.slice(8) + '</span><span style="font-size:9px;font-weight:600">' + dt[0] + '</span></div><div class="grow"><div class="t1 mono" style="font-size:13px">' + X.hm(r.waktu_masuk) + ' → ' + (r.waktu_pulang ? X.hm(r.waktu_pulang) : '--:--') + '</div><div class="t2">' + (r.menit_lembur ? 'Lembur ' + r.menit_lembur + ' mnt' + (r.status_lembur && r.status_lembur !== 'DISETUJUI' ? ' · ' + LST[r.status_lembur][0].toLowerCase() : '') : r.waktu_pulang ? 'Selesai' : 'Belum pulang') + (r.pulang_awal ? ' · pulang duluan (½ hari)' : '') + '</div></div>' +
         (r.menit_terlambat ? '<div class="tr"><span class="badge b-warn">Telat ' + r.menit_terlambat + 'm</span></div>' : '<span class="badge b-ok">Tepat</span>') + '</div>';
     }).join('') + '</div>' : (d.izin && d.izin.length ? '' : '<div class="card flat">' + X.empty('calendar', 'Belum ada absensi', 'Tidak ada data absensi pada ' + X.periodeLabel(p) + '.') + '</div>');
     return '<div class="page narrow">' + head + sum + list + izinListHtml(d.izin) + '</div>';
@@ -274,7 +296,7 @@
     var r = (R.data && R.data.rows || []).filter(function (x) { return x.id === b.dataset.id; })[0]; if (!r) return;
     var ph = function (j, has, lab) { return '<div><div class="lbl" style="margin-bottom:6px">' + lab + '</div>' + (has ? '<div class="photo sk" data-ph="' + j + '"></div>' : '<div class="photo" style="display:grid;place-items:center;color:var(--muted)">Tidak ada foto</div>') + '</div>'; };
     var m = X.modal({ title: X.dateLabel(r.tanggal, true), body: '<div class="sline"><span class="muted">Jadwal</span><b class="mono">' + esc(r.jadwal_masuk) + '–' + esc(r.jadwal_pulang) + '</b></div><div class="sline"><span class="muted">Masuk</span><b class="mono">' + X.hm(r.waktu_masuk) + '</b></div><div class="sline"><span class="muted">Pulang</span><b class="mono">' + (r.waktu_pulang ? X.hm(r.waktu_pulang) : '--:--') + '</b></div>' +
-      '<div class="sline"><span class="muted">Keterlambatan</span><b class="mono">' + r.menit_terlambat + ' mnt</b></div><div class="sline"><span class="muted">Lembur</span><b class="mono">' + r.menit_lembur + ' mnt' + (r.status_lembur ? ' <span class="badge ' + LST[r.status_lembur][1] + '">' + LST[r.status_lembur][0] + '</span>' : '') + '</b></div>' + (r.alasan_lembur ? '<div class="sline"><span class="muted">Alasan lembur</span><span style="text-align:right;max-width:60%">' + esc(r.alasan_lembur) + '</span></div>' : '') +
+      (r.pulang_awal ? '<div class="sline"><span class="muted">Pulang lebih awal</span><b><span class="badge b-warn">dihitung ½ hari</span></b></div>' : '') + '<div class="sline"><span class="muted">Keterlambatan</span><b class="mono">' + r.menit_terlambat + ' mnt</b></div><div class="sline"><span class="muted">Lembur</span><b class="mono">' + r.menit_lembur + ' mnt' + (r.status_lembur ? ' <span class="badge ' + LST[r.status_lembur][1] + '">' + LST[r.status_lembur][0] + '</span>' : '') + '</b></div>' + (r.alasan_lembur ? '<div class="sline"><span class="muted">Alasan lembur</span><span style="text-align:right;max-width:60%">' + esc(r.alasan_lembur) + '</span></div>' : '') +
       '<div class="grid g2 keep" style="margin-top:14px">' + ph('IN', r.foto_masuk, 'Foto Masuk') + ph('OUT', r.foto_pulang, 'Foto Pulang') + '</div>' });
     ['IN', 'OUT'].forEach(function (j) { var slot = m.$('[data-ph="' + j + '"]'); if (!slot) return; X.api('absen.foto', { id: r.id, jenis: j }, { quiet: true }).then(function (res) { if (res.success && slot.isConnected) { slot.outerHTML = '<img class="photo" alt="Foto ' + j + '" src="' + res.data.src + '">'; } else if (slot.isConnected) { slot.classList.remove('sk'); slot.textContent = 'Foto tidak tersedia'; } }); });
   };
