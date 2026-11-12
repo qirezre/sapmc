@@ -781,8 +781,8 @@
       (d.rows.length ? '<div class="list">' + d.rows.map(function (r) {
         var pend = r.status === 'PENDING', stt = LSB[r.status];
         return '<div class="li"><label style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:' + (pend && !r.sendiri && !r.admin ? 'pointer' : 'default') + '">' + (pend && !r.sendiri && !r.admin ? '<input type="checkbox" data-lb="' + esc(r.key) + '" ' + (LB.sel[r.key] ? 'checked' : '') + ' aria-label="Pilih">' : '<span style="width:16px"></span>') +
-          '<div class="grow" style="min-width:0"><div class="t1"><b>' + esc(r.nama) + '</b> <span class="muted">· ' + esc(r.cabang) + '</span></div><div class="t2">' + esc(X.dateLabel(r.tanggal)) + (r.bagian === 'AWAL' ? ' · <span class="badge b-warn">Masuk awal</span> masuk ' + (r.masuk ? X.hm(r.masuk) : '-') + ' (jadwal ' + esc(r.jadwal_masuk) + ') · <b>' + lbDur(r.menit) + '</b>' : ' · <span class="badge b-info">Pulang akhir</span> pulang ' + (r.waktu_pulang ? X.hm(r.waktu_pulang) : '-') + ' (jadwal ' + esc(r.jadwal_pulang) + ') · <b>' + lbDur(r.menit) + '</b>') + (r.pulang_awal ? ' <span class="badge b-bad">pulang duluan ½ hari</span>' : '') + '</div>' + (r.bagian === 'AKHIR' ? '<div class="t2" style="white-space:normal">Alasan: ' + (r.alasan ? esc(r.alasan) : '<i>tidak diisi</i>') + (r.diubah_oleh ? ' · dikoreksi ' + esc(r.diubah_oleh) : '') + '</div>' : (r.diubah_oleh ? '<div class="t2">dikoreksi ' + esc(r.diubah_oleh) + '</div>' : '')) + '</div></label>' +
-          '<div class="tr"><span class="badge ' + stt[1] + '">' + stt[0] + '</span>' + (r.oleh && !pend ? '<div class="muted" style="font-size:10px">' + esc(r.oleh) + '</div>' : '') + (pend && (r.sendiri || r.admin) ? '<div class="muted" style="font-size:10px">' + (r.admin ? 'disetujui atasan' : 'lembur sendiri') + '</div>' : '') + '</div></div>';
+          '<div class="grow" style="min-width:0"><div class="t1"><b>' + esc(r.nama) + '</b> <span class="muted">· ' + esc(r.cabang) + '</span></div><div class="t2">' + esc(X.dateLabel(r.tanggal)) + (r.bagian === 'AWAL' ? ' · <span class="badge b-warn">Masuk awal</span> masuk ' + (r.masuk ? X.hm(r.masuk) : '-') + ' (jadwal ' + esc(r.jadwal_masuk) + ') · <b>' + lbDur(r.menit) + '</b>' : ' · <span class="badge b-info">Pulang akhir</span> pulang ' + (r.waktu_pulang ? X.hm(r.waktu_pulang) : '-') + ' (jadwal ' + esc(r.jadwal_pulang) + ') · <b>' + lbDur(r.menit) + '</b>') + (r.pulang_awal ? ' <span class="badge b-bad">pulang duluan ½ hari</span>' : '') + '</div>' + (r.bagian === 'AKHIR' ? '<div class="t2" style="white-space:normal">Alasan: ' + (r.alasan ? esc(r.alasan) : '<i>tidak diisi</i>') + (r.diubah_oleh ? ' · dikoreksi ' + esc(r.diubah_oleh) : '') + '</div>' : (r.diubah_oleh ? '<div class="t2">dikoreksi ' + esc(r.diubah_oleh) + '</div>' : '')) + (r.ket_ubah && /^Edit lembur/.test(r.ket_ubah) ? '<div class="t2" style="white-space:normal;color:var(--muted)">' + esc(r.ket_ubah) + '</div>' : '') + '</div></label>' +
+          '<div class="tr"><span class="badge ' + stt[1] + '">' + stt[0] + '</span>' + (!pend && !r.sendiri && !r.admin ? '<div style="margin-top:4px"><button class="btn btn-g btn-s" data-act="lb-edit" data-k="' + esc(r.key) + '">' + ico('edit', 'sm') + 'Ubah</button></div>' : '') + (r.oleh && !pend ? '<div class="muted" style="font-size:10px">' + esc(r.oleh) + '</div>' : '') + (pend && (r.sendiri || r.admin) ? '<div class="muted" style="font-size:10px">' + (r.admin ? 'disetujui atasan' : 'lembur sendiri') + '</div>' : '') + '</div></div>';
       }).join('') + '</div>' : '<div class="card flat">' + X.empty('check', 'Tidak ada lembur', 'Tidak ada pengajuan lembur dengan status ini pada periode ini.') + '</div>');
   }
   function lbPaint(force) {
@@ -802,6 +802,24 @@
   X.ACT['lb-prev'] = function () { LB.p = X.periodeShift(LB.p, -1); LB.data = null; LB.sel = {}; lbPaint(); };
   X.ACT['lb-next'] = function () { if (LB.p < X.periodeNow()) { LB.p = X.periodeShift(LB.p, 1); LB.data = null; LB.sel = {}; lbPaint(); } };
   X.ACT['lb-st'] = function (b) { LB.st = b.dataset.s; LB.sel = {}; lbRender(); };
+  X.ACT['lb-edit'] = function (b) {
+    var r = (LB.all || []).filter(function (x) { return x.key === b.dataset.k; })[0]; if (!r) return;
+    var F = X.field, p = LB.p, bag = r.bagian === 'AWAL' ? 'masuk awal' : 'pulang (akhir)';
+    X.modal({ title: 'Ubah lembur · ' + r.nama, body: '<p class="help" style="margin-bottom:10px">' + esc(X.dateLabel(r.tanggal)) + ' · lembur ' + bag + '. Perubahan dicatat (siapa, kapan, alasan) dan langsung memengaruhi payroll bila disetujui.</p>' +
+      '<div class="row2">' + F({ name: 'menit', label: 'Jumlah menit lembur', type: 'number', value: r.menit, required: true, help: 'Isi 0 untuk menghapus bagian lembur ini.' }) + F({ name: 'status', label: 'Status', type: 'select', value: r.status, options: [{ v: 'DISETUJUI', l: 'Disetujui' }, { v: 'DITOLAK', l: 'Ditolak' }, { v: 'PENDING', l: 'Menunggu persetujuan' }] }) + '</div>' +
+      F({ name: 'alasan', type: 'textarea', label: 'Alasan perubahan', required: true, placeholder: 'mis. jam lembur sebenarnya hanya 45 menit / persetujuan dibatalkan' }),
+      footer: '<button class="btn btn-g" data-close>Batal</button><button class="btn btn-p" id="lbes">Simpan</button>',
+      onOpen: function (m) {
+        m.$('#lbes').onclick = function () {
+          var f = X.readForm(m.el), mn = parseInt(f.menit, 10); if (isNaN(mn) || mn < 0) return X.toast('Isi jumlah menit (0 atau lebih).', 'warn'); if (!String(f.alasan || '').trim()) return X.toast('Alasan perubahan wajib diisi.', 'warn');
+          var bt = m.$('#lbes'); bt.disabled = true; bt.innerHTML = '<span class="spin"></span>Menyimpan…';
+          X.api('lembur.edit', { id_absen: r.id_absen, bagian: r.bagian, menit: mn, status: f.status, alasan: f.alasan }).then(function (res) {
+            bt.disabled = false; bt.innerHTML = 'Simpan'; if (!res.success) return X.toast(res.message, 'err');
+            m.close(); X.toast(res.message); X.invalidate('lbr:'); X.invalidate('hmon:'); X.invalidate('hrk:'); X.invalidate('pay'); lbPaint(true);
+          });
+        };
+      } });
+  };
   X.ACT['lb-all'] = function () { lbBase().forEach(function (r) { if (r.status === 'PENDING' && !r.sendiri && !r.admin) LB.sel[r.key] = true; }); lbRender(); };
   X.ACT['lb-recalc'] = function () {
     var p = LB.p, mgmt = S.boot.me.role === 'MANAJEMEN';
